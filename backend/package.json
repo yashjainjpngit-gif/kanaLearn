@@ -1,0 +1,24 @@
+{
+  "name": "kanji-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "import:jmdict": "node scripts/import-jmdict.js",
+    "import:kanjidic2": "node scripts/import-kanjidic2.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.45.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "fast-xml-parser": "^5.2.5",
+    "mongodb": "^6.16.0",
+    "nodemailer": "^8.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}

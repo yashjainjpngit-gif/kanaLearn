@@ -1,0 +1,739 @@
+const fs = require("fs");
+const path = require("path");
+
+function sqlEscape(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/'/g, "''");
+}
+
+function utf8HexLiteral(value) {
+  return { raw: `_utf8mb4 0x${Buffer.from(String(value), "utf8").toString("hex")}` };
+}
+
+const radicals = [
+  ["一", "いち", "one", "一, 二, 三", "Horizontal base line.", 1],
+  ["｜", "ぼう", "line", "中, 十, 本", "Vertical line component.", 1],
+  ["丶", "てん", "dot", "主, 文, 丸", "Dot or small stroke radical.", 1],
+  ["ノ", "の", "slash", "久, 竹, 千", "Diagonal slash component.", 1],
+  ["乙", "おつ", "second / bent", "九, 乞, 乱", "Bent-hook shape.", 1],
+  ["亅", "はねぼう", "hook", "小, 事, 了", "Vertical hook shape.", 1],
+  ["二", "に", "two", "元, 井, 些", "Two horizontal lines.", 2],
+  ["人", "ひと", "person", "休, 体, 何", "Base person radical.", 2],
+  ["亻", "にんべん", "person", "住, 使, 例", "Person on the left side.", 2],
+  ["儿", "ひとあし", "legs", "先, 兄, 元", "Legs component.", 2],
+  ["入", "いる", "enter", "全, 内, 両", "Entering shape.", 2],
+  ["八", "はち", "eight", "公, 分, 六", "Open dividing shape.", 2],
+  ["冂", "けいがまえ", "open box", "円, 同, 内", "Border enclosure.", 2],
+  ["冖", "わかんむり", "cover", "写, 冠, 軍", "Covering top.", 2],
+  ["刀", "かたな", "sword", "切, 分, 召", "Sword/blade radical.", 2],
+  ["刂", "りっとう", "sword", "別, 前, 到", "Sword on right side.", 2],
+  ["力", "ちから", "power", "動, 助, 男", "Strength / effort.", 2],
+  ["勹", "つつみがまえ", "wrap", "包, 勿, 勺", "Wrapping shape.", 2],
+  ["匕", "さじ", "spoon", "北, 化, 匙", "Spoon component.", 2],
+  ["十", "じゅう", "ten", "千, 午, 半", "Cross shape.", 2],
+  ["卜", "ぼく", "divination", "占, 外, 卦", "Crack/divination mark.", 2],
+  ["卩", "ふしづくり", "seal", "印, 危, 却", "Kneeling seal form.", 2],
+  ["口", "くち", "mouth", "名, 味, 呼", "Related to speech/openings.", 3],
+  ["囗", "くにがまえ", "enclosure", "国, 図, 回", "Outside enclosing frame.", 3],
+  ["土", "つち", "earth", "地, 場, 園", "Ground/soil radical.", 3],
+  ["士", "さむらい", "samurai", "声, 吉, 志", "Scholar/samurai shape.", 3],
+  ["夂", "ふゆがしら", "winter", "夏, 変, 各", "Winter-top component.", 3],
+  ["夕", "ゆうべ", "evening", "多, 外, 名", "Evening/moon variant.", 3],
+  ["大", "だい", "big", "犬, 天, 太", "Large/big component.", 3],
+  ["女", "おんな", "woman", "妹, 姉, 婚", "Woman-related kanji.", 3],
+  ["子", "こ", "child", "字, 学, 存", "Child/offspring.", 3],
+  ["宀", "うかんむり", "roof", "家, 安, 字", "Roof/crown radical.", 3],
+  ["小", "しょう", "small", "少, 当, 京", "Small/little component.", 3],
+  ["山", "やま", "mountain", "岩, 島, 崎", "Mountain shape.", 3],
+  ["川", "かわ", "river", "州, 順, 巡", "River/stream form.", 3],
+  ["工", "こう", "craft", "空, 功, 紅", "Work/craft radical.", 3],
+  ["心", "こころ", "heart", "思, 忘, 必", "Heart/mind.", 4],
+  ["忄", "りっしんべん", "heart", "情, 急, 怖", "Heart on left side.", 3],
+  ["手", "て", "hand", "持, 打, 指", "Hand/action radical.", 4],
+  ["扌", "てへん", "hand", "拾, 押, 投", "Hand on left side.", 3],
+  ["日", "ひ", "sun/day", "明, 時, 映", "Sun/day radical.", 4],
+  ["月", "つき", "moon/month", "明, 服, 有", "Moon/body/month radical.", 4],
+  ["木", "き", "tree", "林, 校, 桜", "Tree/wood component.", 4],
+  ["水", "みず", "water", "海, 池, 酒", "Water radical.", 4],
+  ["氵", "さんずい", "water", "海, 河, 洗", "Water on left side.", 3],
+  ["火", "ひ", "fire", "秋, 灯, 焼", "Fire radical.", 4],
+  ["灬", "れっか", "fire", "熱, 然, 煮", "Fire at bottom.", 4],
+  ["犬", "いぬ", "dog", "然, 状, 獣", "Dog/animal variant.", 4],
+  ["王", "おう", "king", "現, 理, 球", "King/jewel base.", 4],
+  ["玉", "たま", "jewel", "宝, 珠, 国", "Ball/jewel.", 5],
+  ["田", "た", "rice field", "男, 町, 思", "Field radical.", 5],
+  ["疒", "やまいだれ", "sickness", "病, 痛, 疲", "Illness shelter radical.", 5],
+  ["目", "め", "eye", "見, 眠, 直", "Eye/seeing.", 5],
+  ["石", "いし", "stone", "岩, 研, 砂", "Stone/rock radical.", 5],
+  ["礻", "しめすへん", "spirit", "社, 神, 祝", "Show/spirit on left.", 4],
+  ["禾", "のぎ", "grain", "私, 秋, 科", "Grain plant.", 5],
+  ["穴", "あな", "hole", "空, 窓, 穴", "Cave/hole radical.", 5],
+  ["立", "たつ", "stand", "音, 親, 新", "Standing radical.", 5],
+  ["竹", "たけ", "bamboo", "答, 第, 算", "Bamboo radical.", 6],
+  ["糸", "いと", "thread", "紙, 細, 終", "Thread/string radical.", 6],
+  ["糹", "いとへん", "thread", "終, 絵, 線", "Thread on left side.", 6],
+  ["缶", "ほとぎ", "jar", "缶, 缶詰", "Jar/can radical.", 6],
+  ["网", "あみがしら", "net", "置, 罪, 罰", "Net radical variant.", 5],
+  ["羊", "ひつじ", "sheep", "美, 群, 詳", "Sheep/wool component.", 6],
+  ["羽", "はね", "feather", "習, 翌, 翻", "Feather/wings.", 6],
+  ["老", "おい", "old", "考, 者, 教", "Old age component.", 6],
+  ["耳", "みみ", "ear", "聞, 取, 聞", "Ear/hearing radical.", 6],
+  ["肉", "にく", "meat", "服, 肉, 育", "Meat/body part.", 6],
+  ["艹", "くさかんむり", "grass", "花, 茶, 草", "Grass/plant top.", 3],
+  ["虫", "むし", "insect", "虹, 蚊, 蛇", "Insect radical.", 6],
+  ["衣", "ころも", "clothes", "表, 裏, 装", "Clothing radical.", 6],
+  ["言", "ことば", "speech", "話, 読, 記", "Speech/language radical.", 7],
+  ["訁", "ごんべん", "speech", "話, 語, 説", "Speech on left side.", 2],
+  ["貝", "かい", "shell/money", "買, 費, 貸", "Shell and money radical.", 7],
+  ["走", "はしる", "run", "起, 超, 越", "Running radical.", 7],
+  ["足", "あし", "foot", "路, 跳, 踊", "Foot/leg radical.", 7],
+  ["車", "くるま", "vehicle", "転, 軽, 駅", "Vehicle radical.", 7],
+  ["辶", "しんにょう", "walk/road", "近, 週, 道", "Movement path radical.", 4],
+  ["邑", "おおざと", "village", "都, 部, 郡", "Village on right side.", 7],
+  ["阝", "こざとへん", "mound", "階, 院, 陽", "Mound/city side radical.", 2],
+  ["金", "かね", "gold/metal", "銀, 鉄, 銅", "Metal radical.", 8],
+  ["門", "もん", "gate", "聞, 開, 閉", "Gate/door radical.", 8],
+  ["雨", "あめ", "rain", "雪, 電, 雲", "Rain/weather radical.", 8],
+  ["青", "あお", "blue", "晴, 情, 静", "Blue/green component.", 8],
+  ["食", "しょく", "eat", "飲, 飯, 館", "Food/eating radical.", 9],
+  ["馬", "うま", "horse", "駅, 験, 駐", "Horse radical.", 10],
+  ["魚", "うお", "fish", "鮮, 鯨, 魚", "Fish radical.", 11],
+];
+
+const kanaRows = [
+  ["A-row", [["a", "\u3042", "\u30a2"], ["i", "\u3044", "\u30a4"], ["u", "\u3046", "\u30a6"], ["e", "\u3048", "\u30a8"], ["o", "\u304a", "\u30aa"]]],
+  ["K-row", [["ka", "\u304b", "\u30ab"], ["ki", "\u304d", "\u30ad"], ["ku", "\u304f", "\u30af"], ["ke", "\u3051", "\u30b1"], ["ko", "\u3053", "\u30b3"]]],
+  ["S-row", [["sa", "\u3055", "\u30b5"], ["shi", "\u3057", "\u30b7"], ["su", "\u3059", "\u30b9"], ["se", "\u305b", "\u30bb"], ["so", "\u305d", "\u30bd"]]],
+  ["T-row", [["ta", "\u305f", "\u30bf"], ["chi", "\u3061", "\u30c1"], ["tsu", "\u3064", "\u30c4"], ["te", "\u3066", "\u30c6"], ["to", "\u3068", "\u30c8"]]],
+  ["N-row", [["na", "\u306a", "\u30ca"], ["ni", "\u306b", "\u30cb"], ["nu", "\u306c", "\u30cc"], ["ne", "\u306d", "\u30cd"], ["no", "\u306e", "\u30ce"]]],
+  ["H-row", [["ha", "\u306f", "\u30cf"], ["hi", "\u3072", "\u30d2"], ["fu", "\u3075", "\u30d5"], ["he", "\u3078", "\u30d8"], ["ho", "\u307b", "\u30db"]]],
+  ["M-row", [["ma", "\u307e", "\u30de"], ["mi", "\u307f", "\u30df"], ["mu", "\u3080", "\u30e0"], ["me", "\u3081", "\u30e1"], ["mo", "\u3082", "\u30e2"]]],
+  ["Y-row", [["ya", "\u3084", "\u30e4"], ["yu", "\u3086", "\u30e6"], ["yo", "\u3088", "\u30e8"]]],
+  ["R-row", [["ra", "\u3089", "\u30e9"], ["ri", "\u308a", "\u30ea"], ["ru", "\u308b", "\u30eb"], ["re", "\u308c", "\u30ec"], ["ro", "\u308d", "\u30ed"]]],
+  ["W-row", [["wa", "\u308f", "\u30ef"], ["wo", "\u3092", "\u30f2"], ["n", "\u3093", "\u30f3"]]],
+  ["G-row", [["ga", "\u304c", "\u30ac"], ["gi", "\u304e", "\u30ae"], ["gu", "\u3050", "\u30b0"], ["ge", "\u3052", "\u30b2"], ["go", "\u3054", "\u30b4"]]],
+  ["Z-row", [["za", "\u3056", "\u30b6"], ["ji", "\u3058", "\u30b8"], ["zu", "\u305a", "\u30ba"], ["ze", "\u305c", "\u30bc"], ["zo", "\u305e", "\u30be"]]],
+  ["D-row", [["da", "\u3060", "\u30c0"], ["ji", "\u3062", "\u30c2"], ["zu", "\u3065", "\u30c5"], ["de", "\u3067", "\u30c7"], ["do", "\u3069", "\u30c9"]]],
+  ["B-row", [["ba", "\u3070", "\u30d0"], ["bi", "\u3073", "\u30d3"], ["bu", "\u3076", "\u30d6"], ["be", "\u3079", "\u30d9"], ["bo", "\u307c", "\u30dc"]]],
+  ["P-row", [["pa", "\u3071", "\u30d1"], ["pi", "\u3074", "\u30d4"], ["pu", "\u3077", "\u30d7"], ["pe", "\u307a", "\u30da"], ["po", "\u307d", "\u30dd"]]],
+  ["Kya-row", [["kya", "\u304d\u3083", "\u30ad\u30e3"], ["kyu", "\u304d\u3085", "\u30ad\u30e5"], ["kyo", "\u304d\u3087", "\u30ad\u30e7"]]],
+  ["Sha-row", [["sha", "\u3057\u3083", "\u30b7\u30e3"], ["shu", "\u3057\u3085", "\u30b7\u30e5"], ["sho", "\u3057\u3087", "\u30b7\u30e7"]]],
+  ["Cha-row", [["cha", "\u3061\u3083", "\u30c1\u30e3"], ["chu", "\u3061\u3085", "\u30c1\u30e5"], ["cho", "\u3061\u3087", "\u30c1\u30e7"]]],
+  ["Nya-row", [["nya", "\u306b\u3083", "\u30cb\u30e3"], ["nyu", "\u306b\u3085", "\u30cb\u30e5"], ["nyo", "\u306b\u3087", "\u30cb\u30e7"]]],
+  ["Hya-row", [["hya", "\u3072\u3083", "\u30d2\u30e3"], ["hyu", "\u3072\u3085", "\u30d2\u30e5"], ["hyo", "\u3072\u3087", "\u30d2\u30e7"]]],
+  ["Mya-row", [["mya", "\u307f\u3083", "\u30df\u30e3"], ["myu", "\u307f\u3085", "\u30df\u30e5"], ["myo", "\u307f\u3087", "\u30df\u30e7"]]],
+  ["Rya-row", [["rya", "\u308a\u3083", "\u30ea\u30e3"], ["ryu", "\u308a\u3085", "\u30ea\u30e5"], ["ryo", "\u308a\u3087", "\u30ea\u30e7"]]],
+  ["Gya-row", [["gya", "\u304e\u3083", "\u30ae\u30e3"], ["gyu", "\u304e\u3085", "\u30ae\u30e5"], ["gyo", "\u304e\u3087", "\u30ae\u30e7"]]],
+  ["Ja-row", [["ja", "\u3058\u3083", "\u30b8\u30e3"], ["ju", "\u3058\u3085", "\u30b8\u30e5"], ["jo", "\u3058\u3087", "\u30b8\u30e7"]]],
+  ["Bya-row", [["bya", "\u3073\u3083", "\u30d3\u30e3"], ["byu", "\u3073\u3085", "\u30d3\u30e5"], ["byo", "\u3073\u3087", "\u30d3\u30e7"]]],
+  ["Pya-row", [["pya", "\u3074\u3083", "\u30d4\u30e3"], ["pyu", "\u3074\u3085", "\u30d4\u30e5"], ["pyo", "\u3074\u3087", "\u30d4\u30e7"]]],
+];
+
+// Build vocabulary from vocab_full.js
+// Format: [id, word, reading, romaji, meaning, wordType, level, sortOrder]
+const vocabSource = require("../vocab_full.js");
+let _vocabId = 1;
+const vocabulary = Object.values(vocabSource)
+  .flat()
+  .map(([word, reading, romaji, meaning, wordType, level]) => {
+    const id = _vocabId++;
+    return [id, word, reading, romaji, meaning, wordType, level, id];
+  });
+
+// Format: [id, patternName, meaning, structureText, exampleJapanese, exampleReading, exampleMeaning, level, sortOrder, chapter, lesson, chapterTitle, notes]
+const grammar = [
+  // ── N5 Chapter 1: Basic Sentences ──────────────────────────────────────────
+  [1,  "〜です",             "to be (polite copula)",           "Noun + です",                              "私は学生です。",                   "わたしはがくせいです。",                   "I am a student.",                          "N5", 101,  1, 1, "Basic Sentences", "Used at the end of a sentence to state identity or attribute politely."],
+  [2,  "〜じゃありません",   "is not (polite negative)",        "Noun + じゃ/ではありません",               "私は先生じゃありません。",           "わたしはせんせいじゃありません。",           "I am not a teacher.",                      "N5", 102,  1, 2, "Basic Sentences", "Formal version: ではありません. Casual: じゃない."],
+  [3,  "〜でしたか",         "was it? (polite past question)",  "Noun + でしたか",                          "昨日は休みでしたか。",               "きのうはやすみでしたか。",                   "Was yesterday a holiday?",                 "N5", 103,  1, 3, "Basic Sentences", "Past tense question form of です."],
+  [4,  "これ/それ/あれ",     "this / that / that over there",   "これ/それ/あれ + は + Noun + です",        "これは本です。",                     "これはほんです。",                           "This is a book.",                          "N5", 104,  1, 4, "Basic Sentences", "これ=near speaker, それ=near listener, あれ=far from both."],
+
+  // ── N5 Chapter 2: Topic & Subject Particles ─────────────────────────────────
+  [5,  "〜は (topic)",       "topic marker particle",           "Noun + は + predicate",                    "猫は可愛いです。",                   "ねこはかわいいです。",                       "Cats are cute.",                           "N5", 201,  2, 1, "Particles は・が", "は marks the topic being talked about. Often contrasts with が."],
+  [6,  "〜が (subject)",     "subject marker particle",         "Noun + が + predicate",                    "犬が好きです。",                     "いぬがすきです。",                           "I like dogs.",                             "N5", 202,  2, 2, "Particles は・が", "が marks the grammatical subject, especially with adjectives of emotion/ability."],
+  [7,  "〜は vs 〜が",       "topic vs subject comparison",     "は for topic/contrast; が for new info",   "私はわかります。彼女がわかりません。", "わたしはわかります。かのじょがわかりません。", "I understand. She doesn't understand.",    "N5", 203,  2, 3, "Particles は・が", "は can replace が to show contrast or make something the topic."],
+
+  // ── N5 Chapter 3: Key Particles ─────────────────────────────────────────────
+  [8,  "〜を",               "direct object marker",            "Noun + を + Verb",                         "ごはんを食べます。",                 "ごはんをたべます。",                         "I eat a meal.",                            "N5", 301,  3, 1, "Key Particles", "を marks the direct object of a transitive verb."],
+  [9,  "〜に (location)",    "location / destination / time",   "Noun + に + います/あります/行く",         "学校に行きます。",                   "がっこうにいきます。",                       "I go to school.",                          "N5", 302,  3, 2, "Key Particles", "に marks destination, location of existence, and specific time."],
+  [10, "〜で (action)",      "location of action / means",      "Noun + で + action Verb",                  "図書館で本を読みます。",             "としょかんでほんをよみます。",               "I read books at the library.",             "N5", 303,  3, 3, "Key Particles", "で marks where an action takes place, or the means/method used."],
+  [11, "〜と",               "with / and (exhaustive)",         "Noun + と + Noun / Verb",                  "友達と映画を見ます。",               "ともだちとえいがをみます。",                 "I watch movies with a friend.",            "N5", 304,  3, 4, "Key Particles", "と connects nouns (and) or shows accompaniment (with)."],
+  [12, "〜も",               "also / too",                      "Noun + も + predicate",                    "私も学生です。",                     "わたしもがくせいです。",                     "I am also a student.",                     "N5", 305,  3, 5, "Key Particles", "も replaces は or が to mean 'also/too'."],
+  [13, "〜の",               "possession / noun modifier",      "Noun + の + Noun",                         "これは私の本です。",                 "これはわたしのほんです。",                   "This is my book.",                         "N5", 306,  3, 6, "Key Particles", "の links nouns, showing possession, origin, or category."],
+  [14, "〜へ",               "direction marker (toward)",       "Noun + へ + motion Verb",                  "東京へ行きます。",                   "とうきょうへいきます。",                     "I go to Tokyo.",                           "N5", 307,  3, 7, "Key Particles", "へ emphasizes direction/heading. に is more common for destinations."],
+  [15, "〜から〜まで",       "from ~ to / until ~",             "Noun + から + Noun + まで",                "9時から5時まで働きます。",           "くじからごじまではたらきます。",             "I work from 9 to 5.",                      "N5", 308,  3, 8, "Key Particles", "から=from/since, まで=until/to. Used for time and place."],
+
+  // ── N5 Chapter 4: Verbs Polite Form ──────────────────────────────────────────
+  [16, "〜ます",             "polite non-past affirmative",     "Verb stem + ます",                         "毎日日本語を勉強します。",           "まいにちにほんごをべんきょうします。",       "I study Japanese every day.",              "N5", 401,  4, 1, "Polite Verb Forms", "ます form is used in polite/formal speech for present or future actions."],
+  [17, "〜ません",           "polite non-past negative",        "Verb stem + ません",                       "お酒を飲みません。",                 "おさけをのみません。",                       "I don't drink alcohol.",                   "N5", 402,  4, 2, "Polite Verb Forms", "Negative form of ます."],
+  [18, "〜ました",           "polite past affirmative",         "Verb stem + ました",                       "昨日映画を見ました。",               "きのうえいがをみました。",                   "I watched a movie yesterday.",             "N5", 403,  4, 3, "Polite Verb Forms", "Past tense polite form."],
+  [19, "〜ませんでした",     "polite past negative",            "Verb stem + ませんでした",                 "昨日学校に行きませんでした。",       "きのうがっこうにいきませんでした。",         "I didn't go to school yesterday.",         "N5", 404,  4, 4, "Polite Verb Forms", "Negative past tense polite form."],
+  [20, "〜ましょう",         "let's do / I'll do",              "Verb stem + ましょう",                     "一緒に食べましょう。",               "いっしょにたべましょう。",                   "Let's eat together.",                      "N5", 405,  4, 5, "Polite Verb Forms", "Volitional/suggestion form. Suggests doing something together."],
+  [21, "〜ましょうか",       "shall we? / shall I?",            "Verb stem + ましょうか",                   "何か飲みましょうか。",               "なにかのみましょうか。",                     "Shall we drink something?",                "N5", 406,  4, 6, "Polite Verb Forms", "Question form of ましょう. Offers or suggests."],
+
+  // ── N5 Chapter 5: Adjectives ──────────────────────────────────────────────────
+  [22, "い-adjective",       "present affirmative",             "い-adj (drop い) + い + です",             "この映画はおもしろいです。",         "このえいがはおもしろいです。",               "This movie is interesting.",               "N5", 501,  5, 1, "Adjectives", "い-adjectives end in い and conjugate directly."],
+  [23, "い-adj 〜くない",    "present negative",                "い-adj (drop い) + くないです",            "この本はおもしろくないです。",       "このほんはおもしろくないです。",             "This book is not interesting.",            "N5", 502,  5, 2, "Adjectives", "Drop the final い and add くない (or くありません formal)."],
+  [24, "い-adj 〜かった",    "past affirmative",                "い-adj (drop い) + かったです",            "昨日は寒かったです。",               "きのうはさむかったです。",                   "It was cold yesterday.",                   "N5", 503,  5, 3, "Adjectives", "Past tense: drop い, add かった."],
+  [25, "な-adjective",       "present affirmative",             "な-adj + な + Noun / な-adj + です",       "彼女はきれいな人です。",             "かのじょはきれいなひとです。",               "She is a beautiful person.",               "N5", 504,  5, 4, "Adjectives", "な-adjectives use な before nouns and drop it before です."],
+  [26, "な-adj 〜じゃない",  "present negative",                "な-adj + じゃありません",                  "ここは静かじゃありません。",         "ここはしずかじゃありません。",               "Here is not quiet.",                       "N5", 505,  5, 5, "Adjectives", "な-adjectives negate with じゃない/ではない."],
+  [27, "とても/あまり",      "very / not very (with neg.)",     "とても + adj / あまり + neg. adj",         "あまり辛くないです。",               "あまりからくないです。",                     "It's not very spicy.",                     "N5", 506,  5, 6, "Adjectives", "とても means 'very'. あまり is used with negative predicates."],
+
+  // ── N5 Chapter 6: て-form ──────────────────────────────────────────────────────
+  [28, "て-form",            "conjunctive verb form",           "Verb → て-form (rules vary by group)",     "食べて、飲んで、寝ます。",           "たべて、のんで、ねます。",                   "I eat, drink, and sleep.",                 "N5", 601,  6, 1, "て-form", "The て-form is the gateway to most intermediate grammar — requests, ongoing actions, permission, prohibition, and sequences all build on it. It carries no tense of its own — tense comes from what follows.\n\n■ Group I (Godan / う-verbs) — change the ending:\n・う, つ, る → って: かう → かって, まつ → まって, とる → とって\n・む, ぶ, ぬ → んで: のむ → のんで, あそぶ → あそんで, しぬ → しんで\n・く → いて: かく → かいて\n・ぐ → いで: およぐ → およいで\n・す → して: はなす → はなして\n※ Exception: 行く (いく) → 行って (not いいて)\n\n■ Group II (Ichidan / る-verbs) — drop る, add て:\nたべる → たべて, みる → みて, おきる → おきて, おしえる → おしえて\n\n■ Group III (Irregular — memorize):\nする → して\nくる → きて\n\nCommon uses:\n・Linking actions: 食べて、飲んで、寝ます。 (eat, drink, then sleep)\n・〜てください = please do\n・〜ています = is doing / ongoing state\n・〜てもいいです = may do / 〜てはいけません = must not do"],
+  [29, "〜てください",       "please do (request)",             "Verb て-form + ください",                  "ここに座ってください。",             "ここにすわってください。",                   "Please sit here.",                         "N5", 602,  6, 2, "て-form", "Polite request. Stronger: てくださいませんか."],
+  [30, "〜ています",         "is doing / ongoing state",        "Verb て-form + います",                    "今、勉強しています。",               "いま、べんきょうしています。",               "I am studying now.",                       "N5", 603,  6, 3, "て-form", "Describes ongoing actions or resulting states."],
+  [31, "〜てから",           "after doing ~",                   "Verb て-form + から",                      "宿題をしてから遊びます。",           "しゅくだいをしてからあそびます。",           "I'll play after doing homework.",          "N5", 604,  6, 4, "て-form", "Indicates one action follows another sequentially."],
+  [32, "〜ないでください",   "please don't do",                 "Verb ない-form + でください",              "ここで写真を撮らないでください。",   "ここでしゃしんをとらないでください。",       "Please don't take photos here.",           "N5", 605,  6, 5, "て-form", "Negative request. Use ない-form + でください."],
+
+  // ── N5 Chapter 7: Want & Desire ────────────────────────────────────────────────
+  [33, "〜たいです",         "want to do",                      "Verb stem + たいです",                     "日本へ行きたいです。",               "にほんへいきたいです。",                     "I want to go to Japan.",                   "N5", 701,  7, 1, "Want & Desire", "Expresses desire to do an action. Used with the speaker's own desire."],
+  [34, "〜たくないです",     "don't want to do",                "Verb stem + たくないです",                 "野菜を食べたくないです。",           "やさいをたべたくないです。",                 "I don't want to eat vegetables.",          "N5", 702,  7, 2, "Want & Desire", "Negative form of たい."],
+  [35, "〜がほしい",         "want something (noun)",           "Noun + がほしいです",                      "新しいスマホがほしいです。",         "あたらしいスマホがほしいです。",             "I want a new smartphone.",                 "N5", 703,  7, 3, "Want & Desire", "ほしい expresses desire for a thing (noun). For actions, use たい."],
+
+  // ── N5 Chapter 8: Existence ────────────────────────────────────────────────────
+  [36, "〜があります",       "there is/are (non-living)",       "Noun + が + あります",                     "机の上に本があります。",             "つくえのうえにほんがあります。",             "There is a book on the desk.",             "N5", 801,  8, 1, "Existence & Location", "あります is for inanimate objects and plants."],
+  [37, "〜がいます",         "there is/are (living)",           "Noun + が + います",                       "公園に子供がいます。",               "こうえんにこどもがいます。",                 "There are children in the park.",          "N5", 802,  8, 2, "Existence & Location", "います is for living things (people, animals, insects)."],
+  [38, "〜に〜があります",   "~ is at / in ~",                  "Place + に + Noun + が + あります/います",  "駅の近くにコンビニがあります。",     "えきのちかくにコンビニがあります。",         "There is a convenience store near the station.", "N5", 803, 8, 3, "Existence & Location", "に marks the location where something exists."],
+
+  // ── N5 Chapter 9: Question Words ───────────────────────────────────────────────
+  [39, "なに/なん",          "what",                            "なに/なん + Particle",                     "これは何ですか。",                   "これはなんですか。",                         "What is this?",                            "N5", 901,  9, 1, "Question Words", "なん before です/の/counter; なに before particles を, が, etc."],
+  [40, "どこ",               "where",                           "どこ + Particle / どこ + ですか",          "トイレはどこですか。",               "トイレはどこですか。",                       "Where is the restroom?",                   "N5", 902,  9, 2, "Question Words", "Asks about location."],
+  [41, "だれ/どなた",        "who / who (polite)",              "だれ/どなた + ですか",                     "あの方はどなたですか。",             "あのかたはどなたですか。",                   "Who is that person?",                      "N5", 903,  9, 3, "Question Words", "だれ is casual, どなた is polite."],
+  [42, "いつ",               "when",                            "いつ + Particle / いつ + ですか",          "誕生日はいつですか。",               "たんじょうびはいつですか。",                 "When is your birthday?",                   "N5", 904,  9, 4, "Question Words", "Asks about time."],
+  [43, "どれ/どちら/どの",   "which one / which",               "どれ / どちら / どの + Noun",              "どれがあなたのですか。",             "どれがあなたのですか。",                     "Which one is yours?",                      "N5", 905,  9, 5, "Question Words", "どれ=which (3+), どちら=which (2)/polite, どの+Noun=which ~."],
+  [44, "どうして/なぜ",      "why",                             "どうして/なぜ + clause",                   "どうして遅刻しましたか。",           "どうしてちこくしましたか。",                 "Why were you late?",                       "N5", 906,  9, 6, "Question Words", "どうして is casual/conversational; なぜ is more formal."],
+  [45, "どのくらい",         "how long / how much",             "どのくらい + Verb / どのくらい + ですか",  "駅まで歩いてどのくらいかかりますか。", "えきまであるいてどのくらいかかりますか。",  "How long does it take to walk to the station?", "N5", 907, 9, 7, "Question Words", "Asks about duration, distance, or amount."],
+
+  // ── N5 Chapter 10: Connecting Sentences ─────────────────────────────────────────
+  [46, "そして/それから",    "and then / after that",           "Sentence。そして/それから Sentence。",      "朝ごはんを食べました。そして、学校へ行きました。", "あさごはんをたべました。そして、がっこうへいきました。", "I ate breakfast. And then I went to school.", "N5", 1001, 10, 1, "Connecting Sentences", "そして adds info; それから shows sequence."],
+  [47, "でも/しかし",        "but / however",                   "Sentence。でも/しかし Sentence。",          "雨が降っています。でも、出かけます。", "あめがふっています。でも、でかけます。",     "It is raining. But I will go out.",        "N5", 1002, 10, 2, "Connecting Sentences", "でも is casual; しかし is more formal/written."],
+  [48, "〜から (because)",   "because / so",                    "Sentence + から、Sentence",                "眠いから、早く寝ます。",             "ねむいから、はやくねます。",                 "Because I'm sleepy, I'll sleep early.",    "N5", 1003, 10, 3, "Connecting Sentences", "から as a conjunction means 'because'. Note: だから=therefore."],
+  [49, "〜前に/〜後で",      "before ~ / after ~",              "Verb dict. + 前に / Verb た + 後で",        "寝る前に歯を磨きます。",             "ねるまえにはをみがきます。",                 "I brush my teeth before sleeping.",        "N5", 1004, 10, 4, "Connecting Sentences", "前に uses dictionary form; 後で uses た-form."],
+
+  // ── N4 Chapter 11: Permissions & Prohibitions ──────────────────────────────────
+  [50, "〜てもいいです",     "it is okay to do",                "Verb て-form + もいいです",                "ここで写真を撮ってもいいです。",     "ここでしゃしんをとってもいいです。",         "You may take photos here.",                "N4", 1101, 11, 1, "Permissions & Prohibitions", "Grants permission. Question form: 〜てもいいですか (May I…?)."],
+  [51, "〜てはいけません",   "must not do",                     "Verb て-form + はいけません",              "ここでタバコを吸ってはいけません。", "ここでタバコをすってはいけません。",         "You must not smoke here.",                 "N4", 1102, 11, 2, "Permissions & Prohibitions", "Expresses prohibition. Stronger than 〜ないでください."],
+  [52, "〜てもいいですか",   "may I do? (seeking permission)",  "Verb て-form + もいいですか",              "窓を開けてもいいですか。",           "まどをあけてもいいですか。",                 "May I open the window?",                   "N4", 1103, 11, 3, "Permissions & Prohibitions", "Politely asks for permission."],
+
+  // ── N4 Chapter 12: Obligation & Necessity ──────────────────────────────────────
+  [53, "〜なければなりません","must do / have to do",            "Verb ない-form + ければなりません",         "薬を飲まなければなりません。",       "くすりをのまなければなりません。",           "I must take my medicine.",                 "N4", 1201, 12, 1, "Obligation & Necessity", "Expresses obligation. Alternative: 〜ないといけません."],
+  [54, "〜なくてもいいです",  "don't have to do",               "Verb ない-form + くてもいいです",           "今日は来なくてもいいですよ。",       "きょうはこなくてもいいですよ。",             "You don't have to come today.",            "N4", 1202, 12, 2, "Obligation & Necessity", "Expresses that something is not necessary."],
+  [55, "〜べきです",          "should / ought to",              "Verb dict. form + べきです",                "もっと野菜を食べるべきです。",       "もっとやさいをたべるべきです。",             "You should eat more vegetables.",          "N4", 1203, 12, 3, "Obligation & Necessity", "Expresses moral obligation or strong recommendation."],
+
+  // ── N4 Chapter 13: Potential Form ──────────────────────────────────────────────
+  [56, "〜られる/える (potential)", "can do / be able to",      "Verb potential form",                       "日本語が話せます。",                "にほんごがはなせます。",                     "I can speak Japanese.",                    "N4", 1301, 13, 1, "Potential Form", "Potential form = \"can do X\" or \"be able to do X\". A key marker of potential is the particle shift from を → が.\n\n■ Group I (Godan / う-verbs) — change last う-sound → え-sound + る:\nかく → かける (can write)\nのむ → のめる (can drink)\nはなす → はなせる (can speak)\nいく → いける (can go)\nまつ → まてる (can wait)\n\n■ Group II (Ichidan / る-verbs) — drop る, add られる:\nたべる → たべられる (can eat)\nみる → みられる (can see)\nおきる → おきられる (can get up)\n※ Casual spoken Japanese often drops ら (ら抜き言葉): たべれる, みれる. Avoid in formal writing/exams.\n\n■ Group III (Irregular):\nする → できる (completely different word — memorize it)\nくる → こられる (can come)\n\n■ Particle shift:\n日本語を話す (speak Japanese) → 日本語が話せる (can speak Japanese)\nThe thing you're able to do/perceive takes が, not を.\n\n■ Potential verbs are all Group II:\nOnce formed, the potential verb conjugates as an Ichidan (る-verb): 話せる → 話せます, 話せない, 話せた."],
+  [57, "〜ことができる",     "can do (formal)",                 "Verb dict. form + ことができます",          "車を運転することができます。",       "くるまをうんてんすることができます。",       "I can drive a car.",                       "N4", 1302, 13, 2, "Potential Form", "More formal than the potential verb form."],
+
+  // ── N4 Chapter 14: Volitional Form ─────────────────────────────────────────────
+  [58, "〜う/よう (volitional)", "let's / I intend to",         "Verb volitional form (〜う/〜よう)",        "明日早く起きよう。",                "あしたはやくおきよう。",                     "Let's / I'll wake up early tomorrow.",     "N4", 1401, 14, 1, "Volitional Form", "Volitional form = casual \"let's do X\" or \"I'll do X\" (personal intention). It's the plain counterpart of polite 〜ましょう.\n\n■ Group I (Godan / う-verbs) — change last う-sound → お-sound + う:\nかく → かこう (let's write)\nのむ → のもう (let's drink)\nはなす → はなそう (let's speak)\nいく → いこう (let's go)\nまつ → まとう (let's wait)\n\n■ Group II (Ichidan / る-verbs) — drop る, add よう:\nたべる → たべよう (let's eat)\nみる → みよう (let's watch)\nおきる → おきよう (let's get up)\n\n■ Group III (Irregular):\nする → しよう (let's do)\nくる → こよう (let's come)\n\n■ Common patterns:\n・Alone (to self or friends): 映画を見よう。 = Let's watch a movie.\n・〜ようと思います = Expresses decided intention (\"I'm thinking of doing\"). Use 思っています for ongoing plan.\n・〜ようとする = About to do / try to do (食べようとした = I was about to eat).\n\n■ Note:\nThe volitional expresses the speaker's will or invitation — it does NOT describe someone else's intention. For \"he plans to…\" use つもりです or 〜ようと思っています (reporting)."],
+  [59, "〜ようと思います",   "I'm thinking of doing",           "Verb volitional form + と思います",         "来年、日本へ行こうと思います。",     "らいねん、にほんへいこうとおもいます。",     "I'm thinking of going to Japan next year.", "N4", 1402, 14, 2, "Volitional Form", "Expresses intention or plan. Use おもっています for ongoing intention."],
+
+  // ── N4 Chapter 15: Conditional Forms ────────────────────────────────────────────
+  [60, "〜たら",             "when / if (after completion)",    "Verb/Adj た-form + ら",                     "家に帰ったら、電話します。",         "いえにかえったら、でんわします。",           "When I get home, I'll call.",              "N4", 1501, 15, 1, "Conditional Forms", "たら is the most versatile conditional — when in doubt, use たら. But Japanese has 4 conditionals that differ in subtle ways. This card is the anchor reference for all of Chapter 15.\n\n■ Four conditionals at a glance:\n・〜たら (completion): \"when/after X, Y\" — Y happens once X is done. Works for one-time events, commands, requests. Most versatile.\n   雨が降ったら、行きません。 = If/when it rains, I won't go.\n・〜ば (hypothetical/general): \"if X, then Y\" — general rules, proverbs, hypotheticals.\n   勉強すれば、合格します。 = If you study, you'll pass.\n・〜と (natural/automatic): \"whenever X, Y always\" — inevitable or repeated results. ✗ cannot use with commands/requests/will.\n   春になると、花が咲きます。 = When spring comes, flowers bloom.\n・〜なら (contextual premise): \"if it's the case that X, then Y\" — Y is based on something just heard or established.\n   日本へ行くなら、京都がいいですよ。 = If you're going to Japan, Kyoto is great.\n\n■ Forming たら — just add ら to the plain past form:\n・Verb: 食べた → 食べたら, 行った → 行ったら, 来た → 来たら\n・い-adj: 高かった → 高かったら\n・な-adj: 静かだった → 静かだったら\n・Noun: 学生だった → 学生だったら\n\n■ Decision tree:\n・Command/request in result? → たら (only one allowed)\n・Automatic, always-true result? → と\n・Based on something just said? → なら\n・General rule / hypothetical? → ば (or たら)\n・Otherwise → たら"],
+  [61, "〜ば",               "if (hypothetical condition)",     "Verb/Adj ば-form",                          "もっと勉強すれば、合格できます。",   "もっとべんきょうすれば、ごうかくできます。", "If you study more, you can pass.",         "N4", 1502, 15, 2, "Conditional Forms", "ば expresses a hypothetical or general condition."],
+  [62, "〜と (natural)",     "if / when (natural consequence)", "Verb dict. form + と",                      "右に曲がると、駅があります。",       "みぎにまがると、えきがあります。",           "If you turn right, there is a station.",   "N4", 1503, 15, 3, "Conditional Forms", "と shows a natural/inevitable result. Cannot be used with commands or requests."],
+  [63, "〜なら",             "if it's the case that / if ~",    "Noun/Verb plain form + なら",               "日本語の本なら、図書館にあります。", "にほんごのほんなら、としょかんにあります。", "If it's a Japanese book, it's in the library.", "N4", 1504, 15, 4, "Conditional Forms", "なら is based on a premise provided by context or the other person."],
+
+  // ── N4 Chapter 16: Giving & Receiving ───────────────────────────────────────────
+  [64, "〜あげます",         "give (outward/upward)",           "Noun を + Person に + あげます",            "友達にプレゼントをあげました。",     "ともだちにプレゼントをあげました。",         "I gave my friend a present.",              "N4", 1601, 16, 1, "Giving & Receiving", "Japanese giving/receiving verbs encode DIRECTION and the speaker's PERSPECTIVE. Get this map right and the rest of Chapter 16 falls into place.\n\n■ Direction map (the core rule):\n・あげる = I / in-group → outward (to others farther from me)\n・くれる = outward → I / in-group (someone gives TO me/us)\n・もらう = I / in-group ← outward (I receive FROM someone)\n\n■ Particle patterns:\n・A が B に Xを あげる   — A gives X to B (A = giver)\n・A が (私に) Xを くれる   — A gives X to me/mine (A = giver, receiver is me)\n・A が B に/から Xを もらう — A receives X from B (A = receiver)\n\n■ Politeness ladder:\n・やる (casual, to inferiors / plants / pets) < あげる (neutral) < さしあげる (humble, to superiors)\n・くれる (neutral) < くださる (honorific: superior gives to me)\n・もらう (neutral) < いただく (humble: I receive from superior)\n\n■ 〜て + giving/receiving = favors (actions, not objects):\n・〜てあげる = do a favor (outward) → 手伝ってあげる (I'll help them)\n・〜てくれる = someone does a favor for me → 手伝ってくれる (they help me)\n・〜てもらう = I receive the favor of someone doing → 手伝ってもらう (I have them help me)\n\n■ Common mistake:\nIf someone does something FOR YOU, it's くれる (inward), never あげる. Using あげる to describe a favor you received sounds backwards — the direction is wrong.\n\n■ Quick test: \"Who benefits?\"\n・Outsider benefits → あげる\n・I benefit → くれる (from their POV) / もらう (from my POV)"],
+  [65, "〜もらいます",       "receive",                         "Person に/から + Noun を + もらいます",      "先生に本をもらいました。",           "せんせいにほんをもらいました。",             "I received a book from my teacher.",       "N4", 1602, 16, 2, "Giving & Receiving", "もらう: receive from someone. The giver is marked with に or から."],
+  [66, "〜くれます",         "give (inward/to me)",             "Person が + Noun を + くれます",             "友達が花をくれました。",             "ともだちがはなをくれました。",               "My friend gave me flowers.",               "N4", 1603, 16, 3, "Giving & Receiving", "くれる: someone gives to me/us. The focus is on the receiver's benefit."],
+  [67, "〜てあげる",         "do for someone (outward)",        "Verb て-form + あげます",                   "荷物を持ってあげました。",           "にもつをもってあげました。",                 "I carried the luggage for them.",          "N4", 1604, 16, 4, "Giving & Receiving", "て+あげる: do a favor for someone (outward direction)."],
+  [68, "〜てもらう",         "have someone do (receive action)","Verb て-form + もらいます",                  "先生に説明してもらいました。",       "せんせいにせつめいしてもらいました。",       "I had the teacher explain.",               "N4", 1605, 16, 5, "Giving & Receiving", "て+もらう: receive the action/favor of someone doing something."],
+  [69, "〜てくれる",         "someone does for me",             "Verb て-form + くれます",                   "友達が手伝ってくれました。",         "ともだちがてつだってくれました。",           "My friend helped me.",                     "N4", 1606, 16, 6, "Giving & Receiving", "て+くれる: someone does a favor for me/us."],
+
+  // ── N4 Chapter 17: Expressing Thoughts & Reporting ──────────────────────────────
+  [70, "〜と思います",       "I think that ~",                  "Plain form + と思います",                   "明日は晴れると思います。",           "あしたははれるとおもいます。",               "I think it will be sunny tomorrow.",       "N4", 1701, 17, 1, "Thoughts & Reporting", "Expresses opinion or guess. Use plain form before と思う."],
+  [71, "〜と言いました",     "said that ~",                     "Plain form + と言いました",                  "彼は来ると言いました。",             "かれはくるといいました。",                   "He said that he would come.",              "N4", 1702, 17, 2, "Thoughts & Reporting", "Reports what someone said. Plain form is used before と."],
+  [72, "〜んです/のです",    "explanation / emphasis",          "Plain form + んです/のです",                "どうして遅れたんですか。",           "どうしておくれたんですか。",                 "Why were you late? (seeking explanation)", "N4", 1703, 17, 3, "Thoughts & Reporting", "のです/んです adds emphasis or requests/gives an explanation."],
+  [73, "〜つもりです",       "intend to / plan to",             "Verb dict. form + つもりです",              "来年、結婚するつもりです。",         "らいねん、けっこんするつもりです。",         "I intend to get married next year.",       "N4", 1704, 17, 4, "Thoughts & Reporting", "Expresses firm intention or plan."],
+
+  // ── N4 Chapter 18: Experience & Change ──────────────────────────────────────────
+  [74, "〜たことがあります", "have done before (experience)",   "Verb た-form + ことがあります",              "富士山に登ったことがあります。",     "ふじさんにのぼったことがあります。",         "I have climbed Mt. Fuji before.",          "N4", 1801, 18, 1, "Experience & Change", "Describes past experiences. Negative: 〜たことがありません."],
+  [75, "〜ようになりました", "came to be / has become",         "Verb dict./neg. form + ようになりました",    "日本語が読めるようになりました。",   "にほんごがよめるようになりました。",         "I have come to be able to read Japanese.", "N4", 1802, 18, 2, "Experience & Change", "Describes a change or new ability/state that has developed."],
+  [76, "〜ようにします",     "make an effort to",               "Verb dict./neg. form + ようにします",        "毎日運動するようにしています。",     "まいにちうんどうするようにしています。",     "I make an effort to exercise every day.", "N4", 1803, 18, 3, "Experience & Change", "Expresses an effort or attempt to do/not do something habitually."],
+
+  // ── N4 Chapter 19: Appearance & Hearsay ─────────────────────────────────────────
+  [77, "〜そうです (appearance)", "looks like / seems",         "Adj stem / Verb stem + そうです",            "この料理はおいしそうです。",         "このりょうりはおいしそうです。",             "This food looks delicious.",               "N4", 1901, 19, 1, "Appearance & Hearsay", "Based on visual appearance. い-adj: drop い + そう; な-adj: drop な + そう."],
+  [78, "〜そうです (hearsay)",    "I heard that ~",             "Plain form + そうです",                      "明日、台風が来るそうです。",         "あした、たいふうがくるそうです。",           "I heard that a typhoon is coming tomorrow.", "N4", 1902, 19, 2, "Appearance & Hearsay", "Reports information heard from others. Same form, different meaning from appearance そう."],
+  [79, "〜らしい",           "apparently / reportedly",         "Plain form + らしい",                        "彼は来ないらしいです。",             "かれはこないらしいです。",                   "Apparently he's not coming.",              "N4", 1903, 19, 3, "Appearance & Hearsay", "Based on indirect evidence or rumor. More subjective than そうです (hearsay)."],
+  [80, "〜はずです",         "it should be / expected to be",   "Plain form + はずです",                      "もうすぐ来るはずです。",             "もうすぐくるはずです。",                     "He should be arriving soon.",              "N4", 1904, 19, 4, "Appearance & Hearsay", "Based on logical reasoning or expectation."],
+
+  // ── N4 Chapter 20: Advanced Connectors ──────────────────────────────────────────
+  [81, "〜だけ",             "only / just",                     "Noun/Verb + だけ",                          "水だけ飲みます。",                   "みずだけのみます。",                         "I only drink water.",                      "N4", 2001, 20, 1, "Advanced Connectors", "Limits scope to just one thing. Similar to しか but used with affirmatives."],
+  [82, "〜しか〜ない",       "nothing but / only (negative)",   "Noun/Verb + しか + negative",               "百円しかありません。",               "ひゃくえんしかありません。",                 "I only have 100 yen.",                     "N4", 2002, 20, 2, "Advanced Connectors", "しか requires a negative predicate. Emphasizes insufficiency or limitation."],
+  [83, "〜ながら",           "while doing ~",                   "Verb stem + ながら + main Verb",             "音楽を聴きながら勉強します。",       "おんがくをききながらべんきょうします。",     "I study while listening to music.",        "N4", 2003, 20, 3, "Advanced Connectors", "Both actions done simultaneously. Subject must be the same for both verbs."],
+  [84, "〜ために",           "for the purpose of / because of", "Verb dict. form + ために / Noun + のために", "日本語を勉強するために日本へ来ました。", "にほんごをべんきょうするためににほんへきました。", "I came to Japan in order to study Japanese.", "N4", 2004, 20, 4, "Advanced Connectors", "Expresses purpose (dict. form) or cause/reason (た-form)."],
+  [85, "〜のに",             "even though / despite",           "Plain form + のに",                          "毎日練習したのに、上手くなりません。", "まいにちれんしゅうしたのに、うまくなりません。", "Even though I practice every day, I don't get better.", "N4", 2005, 20, 5, "Advanced Connectors", "Expresses unexpected result or complaint. Implies speaker's surprise/disappointment."],
+
+  // ── N5 Chapter 11: Conjugation Reference ───────────────────────────────────────
+  [86, "Stem Forms (〜たい/〜ながら/〜ましょう/〜に)",
+    "want / while / let's / purpose",
+    "Verb stem + たい・ながら・ましょう・に",
+    "音楽を聴きながらコーヒーを飲みたいです。",
+    "おんがくをききながらコーヒーをのみたいです。",
+    "I want to drink coffee while listening to music.",
+    "N5", 1101, 11, 1, "Conjugation Reference",
+    "Meanings:\n• 〜たい = want to do (something)\n• 〜ながら = while doing (something)\n• 〜ましょう = let's do / shall we (offer/invitation)\n• 〜に (+ 行く/来る) = purpose of movement\n\nForming rule: take the verb stem, then attach the ending.\n\n■ Group I (Godan / う-verbs) — change last う-sound → い-sound:\nのむ (drink) → のみたい / のみながら / のみましょう / のみに行く\nはなす (speak) → はなしたい / はなしながら / はなしましょう / はなしに行く\nかく (write) → かきたい / かきながら / かきましょう / かきに行く\nあそぶ (play) → あそびたい / あそびながら / あそびましょう / あそびに行く\n\n■ Group II (Ichidan / る-verbs) — drop る, then add:\nたべる (eat) → たべたい / たべながら / たべましょう / たべに行く\nみる (see) → みたい / みながら / みましょう / みに行く\nおきる (wake) → おきたい / おきながら / おきましょう / おきに行く\n\n■ Group III (Irregular — memorize):\nする (do) → したい / しながら / しましょう / しに行く\nくる (come) → きたい / きながら / きましょう / きに来る"],
+
+  [87, "Polite Forms (ます/ません/ました/ませんでした)",
+    "polite present/past, affirmative/negative",
+    "Verb stem + ます・ません・ました・ませんでした",
+    "昨日コーヒーを飲みました。",
+    "きのうコーヒーをのみました。",
+    "I drank coffee yesterday.",
+    "N5", 1102, 11, 2, "Conjugation Reference",
+    "Rule reminder:\n• ます / ました → い-sound stem (present/past affirmative)\n• ません / ませんでした → same い-sound stem (present/past negative)\n\n■ Group I (Godan / う-verbs) — u-sound → い-sound, then add:\n行く (いく) → いきます / いきません / いきました / いきませんでした\n書く (かく) → かきます / かきません / かきました / かきませんでした\n話す (はなす) → はなします / はなしません / はなしました / はなしませんでした\n飲む (のむ) → のみます / のみません / のみました / のみませんでした\n待つ (まつ) → まちます / まちません / まちました / まちませんでした\n\n■ Group II (Ichidan / る-verbs) — drop る, then add everything:\n食べる → 食べます / 食べません / 食べました / 食べませんでした\n見る → 見ます / 見ません / 見ました / 見ませんでした\n起きる → 起きます / 起きません / 起きました / 起きませんでした\n教える → 教えます / 教えません / 教えました / 教えませんでした\n\n■ Group III (Irregular — just memorize):\nする → します / しません / しました / しませんでした\n来る (くる) → 来ます (きます) / 来ません (きません) / 来ました (きました) / 来ませんでした (きませんでした)"],
+
+  [88, "い-Adjectives Full Reference",
+    "conjugation, negation, connector, adverb",
+    "い-adj (drop い) + い/かった/くない/くなかった/くて/く",
+    "このケーキはおいしくて、やすいです。",
+    "このケーキはおいしくて、やすいです。",
+    "This cake is delicious and cheap.",
+    "N5", 1103, 11, 3, "Conjugation Reference",
+    "Rules:\n1. Dictionary form always ends in い (たかい, あたらしい, おいしい).\n2. Modify nouns directly — no particle needed: たかいビル = a tall building.\n3. Inflect for tense/negation by dropping final い and adding the ending.\n4. Add です after the plain form to make it polite as a predicate.\n\nInflection (たかい = tall/expensive):\n• Present affirmative: たかい → is tall\n• Present negative: たかくない → is not tall\n• Past affirmative: たかかった → was tall\n• Past negative: たかくなかった → was not tall\n\n(あたらしい = new):\n• Present affirmative: あたらしい → is new\n• Present negative: あたらしくない → is not new\n• Past affirmative: あたらしかった → was new\n• Past negative: あたらしくなかった → was not new\n\nPolite predicate: このりんごはあかいです。 = This apple is red.\n\nConnecting with 〜くて (list reasons / qualities):\n  drop い → add くて → link next clause\n  このケーキはおいしくて、やすいです。 = delicious and cheap.\n\nAdverb form (describe how):\n  drop い → add く → place before the verb\n• はやい (fast) → はやく走る = to run fast\n• おそい (slow) → おそく起きる = to get up late"],
+
+  [89, "な-Adjectives Full Reference",
+    "conjugation, negation, connector, adverb",
+    "な-adj + な (noun) / です / じゃない / でした / で / に (adverb)",
+    "しずかで、きれいなへやです。",
+    "しずかで、きれいなへやです。",
+    "It's a quiet and clean room.",
+    "N5", 1104, 11, 4, "Conjugation Reference",
+    "Rules:\n1. Usually do NOT end in い. Exceptions that look like い-adjectives but are actually な-adjectives:\n   • きれいな = beautiful\n   • きらいな = disliked\n   • ゆうめいな = famous\n2. To modify a noun, add な: しずかなへや = a quiet room.\n3. な-adjectives don't inflect themselves — use です / じゃない / でした etc.\n\nInflection (しずか = quiet):\n• Present affirmative: へやはしずかです。 → The room is quiet.\n• Present negative: へやはしずかじゃないです。 → The room is not quiet.\n• Past affirmative: へやはしずかでした。 → The room was quiet.\n• Past negative: へやはしずかじゃなかったです。 → The room was not quiet.\n\nConnecting with 〜で (list qualities):\n  な-adj + で → link next clause\n  しずかで、きれいなへや。 = A quiet and clean room.\n\nAdverb form (describe how):\n  な-adj + に + verb\n• しずか (quiet) → しずかに歩く = to walk quietly\n• ゆうめい (famous) → ゆうめいになる = to become famous"],
+];
+
+function buildKanaRows() {
+  const rows = [];
+  let id = 1;
+  ["hiragana", "katakana"].forEach((script) => {
+    kanaRows.forEach(([rowLabel, items], rowIndex) => {
+      items.forEach(([romaji, hiraganaChar, katakanaChar], columnIndex) => {
+        const character = script === "hiragana" ? hiraganaChar : katakanaChar;
+        rows.push([
+          id++,
+          script,
+          utf8HexLiteral(character),
+          romaji,
+          rowLabel.toLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, ""),
+          rowLabel,
+          rowIndex + 1,
+          columnIndex + 1,
+          utf8HexLiteral(character),
+          romaji,
+          `${romaji} sound`,
+          rowIndex * 10 + columnIndex + 1,
+        ]);
+      });
+    });
+  });
+  return rows;
+}
+
+function valuesSql(rows) {
+  return rows
+    .map(
+      (row) =>
+        `  (${row
+          .map((value) => {
+            if (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "raw")) {
+              return value.raw;
+            }
+            return typeof value === "number" ? value : `'${sqlEscape(value)}'`;
+          })
+          .join(", ")})`
+    )
+    .join(",\n");
+}
+
+function generateSql() {
+  const radicalRows = radicals.map((row, index) => [index + 1, ...row, index + 1]);
+  const kanaRowsData = buildKanaRows();
+
+  return `SET NAMES utf8mb4;
+
+INSERT INTO radicals (id, symbol, name, meaning, example_kanji, notes, stroke_count, sort_order) VALUES
+${valuesSql(radicalRows)}
+ON DUPLICATE KEY UPDATE
+  name = VALUES(name),
+  meaning = VALUES(meaning),
+  example_kanji = VALUES(example_kanji),
+  notes = VALUES(notes),
+  stroke_count = VALUES(stroke_count),
+  sort_order = VALUES(sort_order);
+
+INSERT INTO kana_items (
+  id, script, character_symbol, romaji, row_group, row_label, row_order, column_order,
+  example_word, example_reading, example_meaning, sort_order
+) VALUES
+${valuesSql(kanaRowsData)}
+ON DUPLICATE KEY UPDATE
+  romaji = VALUES(romaji),
+  row_group = VALUES(row_group),
+  row_label = VALUES(row_label),
+  row_order = VALUES(row_order),
+  column_order = VALUES(column_order),
+  example_word = VALUES(example_word),
+  example_reading = VALUES(example_reading),
+  example_meaning = VALUES(example_meaning),
+  sort_order = VALUES(sort_order);
+
+INSERT INTO vocabulary_items (id, word, reading, meaning, word_type, level, sort_order) VALUES
+${valuesSql(vocabulary)}
+ON DUPLICATE KEY UPDATE
+  reading = VALUES(reading),
+  meaning = VALUES(meaning),
+  word_type = VALUES(word_type),
+  level = VALUES(level),
+  sort_order = VALUES(sort_order);
+
+INSERT INTO grammar_patterns (
+  id, pattern_name, meaning, structure_text, example_japanese, example_reading, example_meaning, level, sort_order
+) VALUES
+${valuesSql(grammar)}
+ON DUPLICATE KEY UPDATE
+  meaning = VALUES(meaning),
+  structure_text = VALUES(structure_text),
+  example_japanese = VALUES(example_japanese),
+  example_reading = VALUES(example_reading),
+  example_meaning = VALUES(example_meaning),
+  level = VALUES(level),
+  sort_order = VALUES(sort_order);
+`;
+}
+
+// ── Reading Passages ──────────────────────────────────────────────────────────
+// Each entry: { id, title, titleEn, level, japaneseText, readingText, englishText, vocab, sortOrder }
+// vocab: array of { word, reading, meaning }
+const readings = [
+  // ── N5 Passages ─────────────────────────────────────────────────────────────
+  {
+    id: 1,
+    title: "自己紹介",
+    titleEn: "Self Introduction",
+    level: "N5",
+    japaneseText: "わたしの名前は山田はなです。東京に住んでいます。二十二歳の会社員です。趣味は映画を見ることと料理することです。好きな食べ物はすしです。どうぞよろしくお願いします。",
+    readingText: "わたしのなまえはやまだはなです。とうきょうにすんでいます。にじゅうにさいのかいしゃいんです。しゅみはえいがをみることとりょうりすることです。すきなたべものはすしです。どうぞよろしくおねがいします。",
+    englishText: "My name is Hana Yamada. I live in Tokyo. I am a 22-year-old company employee. My hobbies are watching movies and cooking. My favorite food is sushi. Nice to meet you.",
+    vocab: [
+      { word: "名前", reading: "なまえ", meaning: "name" },
+      { word: "趣味", reading: "しゅみ", meaning: "hobby" },
+      { word: "料理", reading: "りょうり", meaning: "cooking" },
+      { word: "会社員", reading: "かいしゃいん", meaning: "company employee" },
+    ],
+    sortOrder: 1,
+  },
+  {
+    id: 2,
+    title: "私の家族",
+    titleEn: "My Family",
+    level: "N5",
+    japaneseText: "わたしの家族は五人です。父と母と姉と弟がいます。父は医者で、母は料理が上手です。姉はもう結婚しています。弟は中学生です。毎週日曜日に家族みんなで公園へ行きます。",
+    readingText: "わたしのかぞくはごにんです。ちちとははとあねとおとうとがいます。ちちはいしゃで、はははりょうりがじょうずです。あねはもうけっこんしています。おとうとはちゅうがくせいです。まいしゅうにちようびにかぞくみんなでこうえんへいきます。",
+    englishText: "My family has five members. I have a father, mother, older sister, and younger brother. My father is a doctor and my mother is good at cooking. My older sister is already married. My younger brother is a middle school student. Every Sunday the whole family goes to the park.",
+    vocab: [
+      { word: "家族", reading: "かぞく", meaning: "family" },
+      { word: "医者", reading: "いしゃ", meaning: "doctor" },
+      { word: "結婚", reading: "けっこん", meaning: "marriage" },
+      { word: "上手", reading: "じょうず", meaning: "good at / skilled" },
+    ],
+    sortOrder: 2,
+  },
+  {
+    id: 3,
+    title: "学校の一日",
+    titleEn: "A Day at School",
+    level: "N5",
+    japaneseText: "毎朝七時に起きます。シャワーをあびて、朝ごはんを食べます。八時に家を出て、電車で学校へ行きます。昼ごはんは友達と一緒に食堂で食べます。授業は三時に終わります。家に帰ってから、宿題をします。",
+    readingText: "まいあさしちじにおきます。シャワーをあびて、あさごはんをたべます。はちじにいえをでて、でんしゃでがっこうへいきます。ひるごはんはともだちといっしょにしょくどうでたべます。じゅぎょうはさんじにおわります。いえにかえってから、しゅくだいをします。",
+    englishText: "Every morning I wake up at seven. I take a shower and eat breakfast. I leave home at eight and go to school by train. I eat lunch in the cafeteria with friends. Classes end at three. After returning home, I do homework.",
+    vocab: [
+      { word: "起きる", reading: "おきる", meaning: "to wake up" },
+      { word: "授業", reading: "じゅぎょう", meaning: "class / lesson" },
+      { word: "宿題", reading: "しゅくだい", meaning: "homework" },
+      { word: "食堂", reading: "しょくどう", meaning: "cafeteria / dining hall" },
+    ],
+    sortOrder: 3,
+  },
+  {
+    id: 4,
+    title: "好きな食べ物",
+    titleEn: "Favorite Foods",
+    level: "N5",
+    japaneseText: "わたしはすしが一番好きです。特にまぐろのすしが好きです。でも、高いのであまり食べられません。よく食べる食べ物はラーメンです。家の近くにおいしいラーメン屋があります。毎週一回は行きます。",
+    readingText: "わたしはすしがいちばんすきです。とくにまぐろのすしがすきです。でも、たかいのであまりたべられません。よくたべるたべものはラーメンです。いえのちかくにおいしいラーメンやがあります。まいしゅういっかいはいきます。",
+    englishText: "I like sushi the most. I especially like tuna sushi. But since it is expensive, I can't eat it very often. The food I often eat is ramen. Near my house there is a delicious ramen shop. I go at least once every week.",
+    vocab: [
+      { word: "一番", reading: "いちばん", meaning: "the most / number one" },
+      { word: "特に", reading: "とくに", meaning: "especially / in particular" },
+      { word: "高い", reading: "たかい", meaning: "expensive / tall" },
+      { word: "近く", reading: "ちかく", meaning: "nearby / close" },
+    ],
+    sortOrder: 4,
+  },
+  {
+    id: 5,
+    title: "週末の予定",
+    titleEn: "Weekend Plans",
+    level: "N5",
+    japaneseText: "今週の土曜日は友達と映画を見に行く予定です。見たい映画はアクション映画です。映画が終わったら、レストランで夕食を食べます。日曜日は家でゆっくりします。本を読んだり、音楽を聴いたりするつもりです。",
+    readingText: "こんしゅうのどようびはともだちとえいがをみにいくよていです。みたいえいがはアクションえいがです。えいががおわったら、レストランでゆうしょくをたべます。にちようびはいえでゆっくりします。ほんをよんだり、おんがくをきいたりするつもりです。",
+    englishText: "This Saturday I plan to go see a movie with a friend. The movie I want to see is an action movie. When the movie is over, we'll eat dinner at a restaurant. On Sunday I'll relax at home. I intend to do things like read books and listen to music.",
+    vocab: [
+      { word: "予定", reading: "よてい", meaning: "plan / schedule" },
+      { word: "夕食", reading: "ゆうしょく", meaning: "dinner / evening meal" },
+      { word: "ゆっくり", reading: "ゆっくり", meaning: "slowly / at ease / to relax" },
+    ],
+    sortOrder: 5,
+  },
+  {
+    id: 6,
+    title: "私の町",
+    titleEn: "My Town",
+    level: "N5",
+    japaneseText: "わたしが住んでいる町は小さいですが、とても住みやすいです。駅の近くにスーパーとコンビニがあります。公園も近くにあって、子供たちがよく遊んでいます。休みの日には公園でジョギングします。とても静かでいい町だと思います。",
+    readingText: "わたしがすんでいるまちはちいさいですが、とてもすみやすいです。えきのちかくにスーパーとコンビニがあります。こうえんもちかくにあって、こどもたちがよくあそんでいます。やすみのひにはこうえんでジョギングします。とてもしずかでいいまちだとおもいます。",
+    englishText: "The town I live in is small, but very easy to live in. Near the station there is a supermarket and a convenience store. There is also a park nearby where children often play. On days off I go jogging in the park. I think it is a very quiet, nice town.",
+    vocab: [
+      { word: "住む", reading: "すむ", meaning: "to live / to reside" },
+      { word: "静か", reading: "しずか", meaning: "quiet / peaceful" },
+      { word: "子供", reading: "こども", meaning: "child / children" },
+    ],
+    sortOrder: 6,
+  },
+  {
+    id: 7,
+    title: "天気と季節",
+    titleEn: "Weather and Seasons",
+    level: "N5",
+    japaneseText: "日本には四つの季節があります。春は暖かくて、花見ができます。夏は暑くてたいへんです。秋は紅葉がきれいです。冬は寒いですが、雪が降ることもあります。わたしは春と秋が一番好きです。",
+    readingText: "にほんにはよっつのきせつがあります。はるはあたたかくて、はなみができます。なつはあつくてたいへんです。あきはこうようがきれいです。ふゆはさむいですが、ゆきがふることもあります。わたしははるとあきがいちばんすきです。",
+    englishText: "Japan has four seasons. Spring is warm and you can do hanami (flower viewing). Summer is hot and tough. Autumn has beautiful fall foliage. Winter is cold, but it sometimes snows. I like spring and autumn the most.",
+    vocab: [
+      { word: "季節", reading: "きせつ", meaning: "season" },
+      { word: "花見", reading: "はなみ", meaning: "flower viewing" },
+      { word: "紅葉", reading: "こうよう", meaning: "autumn leaves" },
+      { word: "雪", reading: "ゆき", meaning: "snow" },
+    ],
+    sortOrder: 7,
+  },
+  {
+    id: 8,
+    title: "お買い物",
+    titleEn: "Shopping",
+    level: "N5",
+    japaneseText: "昨日デパートへ買い物に行きました。新しいシャツを一枚買いました。それから靴も見ましたが、高かったので買いませんでした。食料品もスーパーで買いました。全部で六千円使いました。",
+    readingText: "きのうデパートへかいものにいきました。あたらしいシャツをいちまいかいました。それからくつもみましたが、たかかったのでかいませんでした。しょくりょうひんもスーパーでかいました。ぜんぶでろくせんえんつかいました。",
+    englishText: "Yesterday I went shopping at the department store. I bought one new shirt. After that I also looked at shoes, but since they were expensive I didn't buy them. I also bought groceries at the supermarket. I spent 6,000 yen in total.",
+    vocab: [
+      { word: "デパート", reading: "デパート", meaning: "department store" },
+      { word: "食料品", reading: "しょくりょうひん", meaning: "groceries / food items" },
+      { word: "枚", reading: "まい", meaning: "counter for flat things (sheets, shirts)" },
+    ],
+    sortOrder: 8,
+  },
+  {
+    id: 9,
+    title: "先生への手紙",
+    titleEn: "A Letter to the Teacher",
+    level: "N5",
+    japaneseText: "先生、お元気ですか。わたしは今、東京に住んでいます。毎日日本語を勉強しています。先生に教えていただいたことをよく思い出します。来月、日本語能力試験を受けます。合格できるようにがんばります。またお会いしたいです。",
+    readingText: "せんせい、おげんきですか。わたしはいま、とうきょうにすんでいます。まいにちにほんごをべんきょうしています。せんせいにおしえていただいたことをよくおもいだします。らいげつ、にほんごのうりょくしけんをうけます。ごうかくできるようにがんばります。またおあいしたいです。",
+    englishText: "Teacher, how are you? I am currently living in Tokyo. I study Japanese every day. I often think back on what you taught me. Next month, I will take the Japanese Language Proficiency Test. I will do my best to pass. I hope to meet you again.",
+    vocab: [
+      { word: "能力試験", reading: "のうりょくしけん", meaning: "proficiency test" },
+      { word: "合格", reading: "ごうかく", meaning: "passing an exam" },
+      { word: "思い出す", reading: "おもいだす", meaning: "to recall / to remember" },
+    ],
+    sortOrder: 9,
+  },
+  {
+    id: 10,
+    title: "友達を家に招待する",
+    titleEn: "Inviting a Friend Home",
+    level: "N5",
+    japaneseText: "来週の土曜日、友達を家に招待しました。一緒に料理を作って食べるつもりです。わたしはカレーを作ります。友達はケーキを持ってきてくれます。家の掃除もしなければなりません。とても楽しみにしています。",
+    readingText: "らいしゅうのどようび、ともだちをいえにしょうたいしました。いっしょにりょうりをつくってたべるつもりです。わたしはカレーをつくります。ともだちはケーキをもってきてくれます。いえのそうじもしなければなりません。とてもたのしみにしています。",
+    englishText: "I invited a friend to my home next Saturday. I intend to cook and eat together. I will make curry. My friend will bring a cake. I also have to clean the house. I am very much looking forward to it.",
+    vocab: [
+      { word: "招待", reading: "しょうたい", meaning: "invitation" },
+      { word: "掃除", reading: "そうじ", meaning: "cleaning" },
+      { word: "楽しみ", reading: "たのしみ", meaning: "looking forward to / enjoyment" },
+    ],
+    sortOrder: 10,
+  },
+
+  // ── N4 Passages ─────────────────────────────────────────────────────────────
+  {
+    id: 11,
+    title: "アルバイトを始める",
+    titleEn: "Starting a Part-time Job",
+    level: "N4",
+    japaneseText: "先月から近くのコンビニでアルバイトを始めました。週に三回働いています。仕事は最初難しかったですが、今はだんだんわかってきました。お客さんに感謝されると、とてもうれしいです。アルバイトで稼いだお金で旅行に行こうと思っています。",
+    readingText: "せんげつからちかくのコンビニでアルバイトをはじめました。しゅうにさんかいはたらいています。しごとはさいしょむずかしかったですが、いまはだんだんわかってきました。おきゃくさんにかんしゃされると、とてもうれしいです。アルバイトでかせいだおかねでりょこうにいこうとおもっています。",
+    englishText: "I started a part-time job at a nearby convenience store last month. I work three times a week. The job was difficult at first, but I am gradually getting the hang of it. I feel very happy when customers thank me. I'm thinking of going on a trip with the money I earn.",
+    vocab: [
+      { word: "アルバイト", reading: "アルバイト", meaning: "part-time job" },
+      { word: "感謝", reading: "かんしゃ", meaning: "gratitude / thanks" },
+      { word: "稼ぐ", reading: "かせぐ", meaning: "to earn money" },
+      { word: "だんだん", reading: "だんだん", meaning: "gradually / little by little" },
+    ],
+    sortOrder: 11,
+  },
+  {
+    id: 12,
+    title: "旅行の計画",
+    titleEn: "Travel Plans",
+    level: "N4",
+    japaneseText: "来月の夏休みに京都と大阪へ旅行する予定です。友達と二人で新幹線で行きます。京都では金閣寺や清水寺を見たいと思っています。大阪ではたこ焼きやお好み焼きを食べるつもりです。ホテルはもう予約しました。今からとても楽しみです。",
+    readingText: "らいげつのなつやすみにきょうととおおさかへりょこうするよていです。ともだちとふたりでしんかんせんでいきます。きょうとではきんかくじやきよみずでらをみたいとおもっています。おおさかではたこやきやおこのみやきをたべるつもりです。ホテルはもうよやくしました。いまからとてもたのしみです。",
+    englishText: "I plan to travel to Kyoto and Osaka during summer vacation next month. I'll go with a friend by bullet train. In Kyoto, I want to see Kinkakuji and Kiyomizudera. In Osaka, I plan to eat takoyaki and okonomiyaki. I've already booked the hotel. I'm really looking forward to it.",
+    vocab: [
+      { word: "新幹線", reading: "しんかんせん", meaning: "bullet train (Shinkansen)" },
+      { word: "予約", reading: "よやく", meaning: "reservation / booking" },
+      { word: "夏休み", reading: "なつやすみ", meaning: "summer vacation" },
+      { word: "金閣寺", reading: "きんかくじ", meaning: "Kinkakuji (Golden Pavilion)" },
+    ],
+    sortOrder: 12,
+  },
+  {
+    id: 13,
+    title: "健康のために",
+    titleEn: "For Good Health",
+    level: "N4",
+    japaneseText: "最近、健康のためにいろいろなことをするようにしています。毎朝三十分散歩するようにしました。それから、夜遅くに食べないようにしています。野菜をもっとたくさん食べるようにもしています。先月より体の調子がよくなってきた気がします。",
+    readingText: "さいきん、けんこうのためにいろいろなことをするようにしています。まいあささんじゅっぷんさんぽするようにしました。それから、よるおそくにたべないようにしています。やさいをもっとたくさんたべるようにもしています。せんげつよりからだのちょうしがよくなってきたきがします。",
+    englishText: "Recently, I have been making efforts to do various things for my health. I started making a habit of taking a 30-minute walk every morning. Also, I try not to eat late at night. I am also trying to eat more vegetables. I feel like my physical condition has improved compared to last month.",
+    vocab: [
+      { word: "健康", reading: "けんこう", meaning: "health" },
+      { word: "散歩", reading: "さんぽ", meaning: "walk / stroll" },
+      { word: "調子", reading: "ちょうし", meaning: "condition / state (of health)" },
+      { word: "野菜", reading: "やさい", meaning: "vegetables" },
+    ],
+    sortOrder: 13,
+  },
+  {
+    id: 14,
+    title: "日本語を勉強する理由",
+    titleEn: "Why I Study Japanese",
+    level: "N4",
+    japaneseText: "わたしが日本語を勉強し始めたのは三年前のことです。最初は日本のアニメが好きで、字幕なしで見たいと思ったからです。最初はひらがなを覚えるのも大変でした。でも、だんだん話せるようになって、日本人の友達もできました。来年、日本に留学しようと思っています。",
+    readingText: "わたしがにほんごをべんきょうしはじめたのはさんねんまえのことです。さいしょはにほんのアニメがすきで、じまくなしでみたいとおもったからです。さいしょはひらがなをおぼえるのもたいへんでした。でも、だんだんはなせるようになって、にほんじんのともだちもできました。らいねん、にほんにりゅうがくしようとおもっています。",
+    englishText: "It was three years ago that I started studying Japanese. At first, it was because I liked Japanese anime and wanted to watch it without subtitles. Even memorizing hiragana was hard at the beginning. But I gradually became able to speak, and I also made Japanese friends. I'm thinking of studying abroad in Japan next year.",
+    vocab: [
+      { word: "字幕", reading: "じまく", meaning: "subtitles" },
+      { word: "覚える", reading: "おぼえる", meaning: "to memorize / to learn" },
+      { word: "留学", reading: "りゅうがく", meaning: "studying abroad" },
+      { word: "理由", reading: "りゆう", meaning: "reason" },
+    ],
+    sortOrder: 14,
+  },
+  {
+    id: 15,
+    title: "一人暮らし",
+    titleEn: "Living Alone",
+    level: "N4",
+    japaneseText: "大学に入ってから、一人暮らしを始めました。最初は料理も洗濯も全部自分でしなければならなくて大変でした。しかし、一人暮らしをすることで、いろいろなことができるようになりました。今では料理が好きになりました。自由な時間に好きなことができるのもいいです。",
+    readingText: "だいがくにはいってから、ひとりぐらしをはじめました。さいしょはりょうりもせんたくもぜんぶじぶんでしなければならなくてたいへんでした。しかし、ひとりぐらしをすることで、いろいろなことができるようになりました。いまではりょうりがすきになりました。じゆうなじかんにすきなことができるのもいいです。",
+    englishText: "After entering university, I started living alone. At first it was tough having to do everything myself, including cooking and laundry. However, through living alone, I became able to do various things. Now I've grown to like cooking. It's also nice to be able to do what I want in my free time.",
+    vocab: [
+      { word: "一人暮らし", reading: "ひとりぐらし", meaning: "living alone" },
+      { word: "洗濯", reading: "せんたく", meaning: "laundry" },
+      { word: "自由", reading: "じゆう", meaning: "freedom / free" },
+    ],
+    sortOrder: 15,
+  },
+  {
+    id: 16,
+    title: "プレゼントを選ぶ",
+    titleEn: "Choosing a Present",
+    level: "N4",
+    japaneseText: "来週、母の誕生日があります。どんなプレゼントがいいか考えています。母はお花が好きなので、花束を買おうかと思っていました。でも、友達に相談したら、スカーフの方がいいと言われました。明日デパートへ見に行くつもりです。喜んでもらえるといいです。",
+    readingText: "らいしゅう、ははのたんじょうびがあります。どんなプレゼントがいいかかんがえています。はははおはながすきなので、はなたばをかおうかとおもっていました。でも、ともだちにそうだんしたら、スカーフのほうがいいといわれました。あしたデパートへみにいくつもりです。よろこんでもらえるといいです。",
+    englishText: "My mother's birthday is next week. I am thinking about what kind of present would be good. Since my mother likes flowers, I was thinking of buying a bouquet. But when I consulted a friend, I was told that a scarf would be better. I intend to go look at the department store tomorrow. I hope she'll be happy with it.",
+    vocab: [
+      { word: "誕生日", reading: "たんじょうび", meaning: "birthday" },
+      { word: "花束", reading: "はなたば", meaning: "bouquet of flowers" },
+      { word: "相談", reading: "そうだん", meaning: "consultation / asking for advice" },
+    ],
+    sortOrder: 16,
+  },
+  {
+    id: 17,
+    title: "将来の夢",
+    titleEn: "Future Dreams",
+    level: "N4",
+    japaneseText: "わたしの将来の夢は医者になることです。病気の人を助けたいと思っているからです。今は一生懸命勉強しています。医学部に入るのはとても難しいですが、あきらめないつもりです。夢を実現させるために、毎日努力し続けます。",
+    readingText: "わたしのしょうらいのゆめはいしゃになることです。びょうきのひとをたすけたいとおもっているからです。いまはいっしょうけんめいべんきょうしています。いがくぶにはいるのはとてもむずかしいですが、あきらめないつもりです。ゆめをじつげんさせるために、まいにちどりょくしつづけます。",
+    englishText: "My dream for the future is to become a doctor. It's because I want to help people who are sick. I am studying very hard now. Entering the medical department is very difficult, but I don't intend to give up. I will continue making efforts every day to realize my dream.",
+    vocab: [
+      { word: "将来", reading: "しょうらい", meaning: "future" },
+      { word: "実現", reading: "じつげん", meaning: "realization / coming true" },
+      { word: "努力", reading: "どりょく", meaning: "effort / hard work" },
+      { word: "一生懸命", reading: "いっしょうけんめい", meaning: "with all one's effort" },
+    ],
+    sortOrder: 17,
+  },
+  {
+    id: 18,
+    title: "友達に相談する",
+    titleEn: "Consulting a Friend",
+    level: "N4",
+    japaneseText: "先週から体の調子があまりよくありません。夜なかなか眠れなくて、食欲もありません。友達に相談したところ、病院へ行くべきだと言われました。仕事が忙しくてなかなか行けなかったのですが、今日やっと行くことにしました。早く元気になりたいです。",
+    readingText: "せんしゅうからからだのちょうしがあまりよくありません。よるなかなかねむれなくて、しょくよくもありません。ともだちにそうだんしたところ、びょういんへいくべきだといわれました。しごとがいそがしくてなかなかいけなかったのですが、きょうやっといくことにしました。はやくげんきになりたいです。",
+    englishText: "My physical condition has not been very good since last week. I can't sleep well at night and I have no appetite. When I consulted a friend, I was told I should go to the hospital. I was so busy with work that I couldn't go, but today I finally decided to go. I want to get better quickly.",
+    vocab: [
+      { word: "食欲", reading: "しょくよく", meaning: "appetite" },
+      { word: "やっと", reading: "やっと", meaning: "finally / at last" },
+      { word: "眠る", reading: "ねむる", meaning: "to sleep" },
+      { word: "忙しい", reading: "いそがしい", meaning: "busy" },
+    ],
+    sortOrder: 18,
+  },
+  {
+    id: 19,
+    title: "日本の文化",
+    titleEn: "Japanese Culture",
+    level: "N4",
+    japaneseText: "日本には面白い文化がたくさんあります。たとえば、お正月には家族で集まってお雑煮やおせち料理を食べる習慣があります。また、春になると花見をする人が多いです。夏には花火大会や盆踊りが各地で行われます。こういった行事を通して、季節の変化を感じることができます。",
+    readingText: "にほんにはおもしろいぶんかがたくさんあります。たとえば、おしょうがつにはかぞくであつまっておぞうにやおせちりょうりをたべるしゅうかんがあります。また、はるになるとはなみをするひとがおおいです。なつにははなびたいかいやぼんおどりがかくちでおこなわれます。こういったぎょうじをとおして、きせつのへんかをかんじることができます。",
+    englishText: "Japan has many interesting customs. For example, at New Year there is a custom of gathering with family and eating ozoni and osechi. When spring comes, many people do hanami. In summer, fireworks festivals and Bon dances are held all over the country. Through such events, you can feel the changing of the seasons.",
+    vocab: [
+      { word: "お正月", reading: "おしょうがつ", meaning: "New Year" },
+      { word: "習慣", reading: "しゅうかん", meaning: "custom / habit" },
+      { word: "花火", reading: "はなび", meaning: "fireworks" },
+      { word: "行事", reading: "ぎょうじ", meaning: "event / occasion" },
+    ],
+    sortOrder: 19,
+  },
+  {
+    id: 20,
+    title: "環境を守るために",
+    titleEn: "To Protect the Environment",
+    level: "N4",
+    japaneseText: "最近、環境問題についてのニュースをよく聞きます。地球温暖化が進んでいるそうです。わたしたちにできることから始めようと思います。たとえば、買い物のとき、エコバッグを持って行くようにしました。電気をこまめに消すようにもしています。小さなことでも積み重ねれば大きな効果があるはずです。",
+    readingText: "さいきん、かんきょうもんだいについてのニュースをよくききます。ちきゅうおんだんかがすすんでいるそうです。わたしたちにできることからはじめようとおもいます。たとえば、かいもののとき、エコバッグをもっていくようにしました。でんきをこまめにけすようにもしています。ちいさなことでもつみかさねればおおきなこうかがあるはずです。",
+    englishText: "Lately I often hear news about environmental issues. It seems that global warming is progressing. I think I'll start with what we can do. For example, I started bringing an eco-bag when shopping. I also try to diligently turn off lights. Even small things, if accumulated, should have a big effect.",
+    vocab: [
+      { word: "環境", reading: "かんきょう", meaning: "environment" },
+      { word: "地球温暖化", reading: "ちきゅうおんだんか", meaning: "global warming" },
+      { word: "効果", reading: "こうか", meaning: "effect / result" },
+    ],
+    sortOrder: 20,
+  },
+];
+
+module.exports = {
+  radicals,
+  kanaRows,
+  vocabulary,
+  grammar,
+  readings,
+};
+
+if (require.main === module) {
+  const outputPath = path.join(__dirname, "..", "study-content-preview.sql");
+  fs.writeFileSync(outputPath, generateSql(), "utf8");
+  console.log(`Generated legacy preview at ${outputPath}`);
+}
