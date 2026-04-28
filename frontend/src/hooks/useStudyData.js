@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   fetchCategories,
+  fetchCounters,
   fetchCounts,
   fetchGrammar,
   fetchKana,
@@ -95,6 +96,12 @@ export default function useStudyData({
     enabled: activeTab === "readings",
   });
 
+  const countersQuery = useQuery({
+    queryKey: ["counters", search],
+    queryFn: () => fetchCounters({ search }),
+    enabled: activeTab === "counters",
+  });
+
   const dashboardQuery = useQuery({
     queryKey: ["dashboard", clientId, roundSummaryCompleted],
     queryFn: async () => {
@@ -153,10 +160,11 @@ export default function useStudyData({
     if (activeTab === "hiragana" || activeTab === "katakana") return kanaQuery;
     if (activeTab === "vocabulary") return vocabularyQuery;
     if (activeTab === "grammar") return grammarQuery;
+    if (activeTab === "counters") return countersQuery;
     if (activeTab === "readings") return readingsQuery;
     if (activeTab === "dashboard") return dashboardQuery;
     return null;
-  }, [activeTab, dashboardQuery, grammarQuery, kanaQuery, kanjiQuery, radicalsQuery, readingsQuery, vocabularyQuery]);
+  }, [activeTab, countersQuery, dashboardQuery, grammarQuery, kanaQuery, kanjiQuery, radicalsQuery, readingsQuery, vocabularyQuery]);
 
   const error =
     categoriesQuery.error?.message ||
@@ -177,9 +185,11 @@ export default function useStudyData({
             ? kanaQuery.data ?? []
             : activeTab === "grammar"
               ? grammarQuery.data ?? []
-              : activeTab === "readings"
-                ? readingsQuery.data ?? []
-                : [],
+              : activeTab === "counters"
+                ? countersQuery.data ?? []
+                : activeTab === "readings"
+                  ? readingsQuery.data ?? []
+                  : [],
     vocabularyLevelCounts: vocabularyQuery.data?.levelCounts ?? {},
     vocabularyTotal: vocabularyQuery.data?.total ?? 0,
     dashboardStats:

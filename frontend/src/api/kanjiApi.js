@@ -64,6 +64,11 @@ export async function fetchGrammar({ search = "" } = {}) {
   return handleResponse(response);
 }
 
+export async function fetchCounters({ search = "", level = "", category = "" } = {}) {
+  const response = await fetch(buildUrl("counters", { search, level, category }));
+  return handleResponse(response);
+}
+
 export async function fetchReadings({ search = "", level = "", userId = "" } = {}) {
   const response = await fetch(buildUrl("readings", { search, level, userId }));
   return handleResponse(response);
