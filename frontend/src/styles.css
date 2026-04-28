@@ -2497,15 +2497,21 @@ input {
   place-items: center;
   padding: 24px;
   z-index: 20;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-card {
   position: relative;
   width: min(100%, 490px);
+  max-height: calc(100dvh - 48px);
   background: var(--surface);
   border-radius: 14px;
   box-shadow: 0 16px 56px rgba(0, 0, 0, 0.18);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-close {
@@ -2555,9 +2561,14 @@ input {
 }
 
 .modal-panel {
+  flex: 1 1 auto;
+  min-height: 0;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   padding: 16px 18px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-grid {
@@ -3074,6 +3085,16 @@ input {
 
   .modal-grid {
     grid-template-columns: 1fr;
+  }
+
+  .modal-overlay {
+    place-items: start center;
+    padding: 12px;
+  }
+
+  .modal-card {
+    width: min(100%, 100vw - 24px);
+    max-height: calc(100dvh - 24px);
   }
 
   .vocabulary-table-header {
@@ -4918,8 +4939,9 @@ input {
 
 .counters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 20px;
+  align-items: start;
 }
 
 @media (max-width: 600px) {
@@ -4938,6 +4960,11 @@ input {
   gap: 12px;
   cursor: pointer;
   transition: border-color 0.15s;
+  min-width: 0;
+  max-height: min(78vh, 760px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .counter-card:hover,
 .counter-card:focus-visible {
