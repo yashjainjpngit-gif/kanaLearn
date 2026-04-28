@@ -1,6 +1,7 @@
 import Dashboard from "./Dashboard";
 import ChallengesView from "./ChallengesView";
 import ConjugatorView from "./ConjugatorView";
+import CountersView from "./CountersView";
 import EmptyState from "./EmptyState";
 import GrammarView from "./GrammarView";
 import KanaRows from "./KanaRows";
@@ -138,6 +139,10 @@ export default function AppContent({
         onToggleLearn={toggleLearned}
       />
     );
+  }
+
+  if (activeTab === "counters") {
+    return <CountersView items={visibleItems} search={search} />;
   }
 
   if (activeTab === "grammar") {
