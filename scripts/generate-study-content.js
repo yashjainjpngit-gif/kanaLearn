@@ -897,6 +897,7 @@ const counters = [
       { number: 8,  kanji: "八番",  reading: "はちばん",   romaji: "hachiban", irregular: false },
       { number: 9,  kanji: "九番",  reading: "きゅうばん", romaji: "kyuuban",  irregular: false },
       { number: 10, kanji: "十番",  reading: "じゅうばん", romaji: "juuban",   irregular: false },
+      { number: null, kanji: "何番", reading: "なんばん", romaji: "nanban", irregular: false },
     ],
     exampleSentences: [
       { japanese: "一番が好きです。",     reading: "いちばんがすきです。",     english: "I like number one / I like it most." },
@@ -986,6 +987,7 @@ const counters = [
       { number: 8,  kanji: "八つ",  reading: "やっつ",     romaji: "yattsu",     irregular: true },
       { number: 9,  kanji: "九つ",  reading: "ここのつ",   romaji: "kokonotsu",  irregular: true },
       { number: 10, kanji: "十",    reading: "とお",       romaji: "too",         irregular: true },
+      { number: null, kanji: "幾つ", reading: "いくつ", romaji: "ikutsu", irregular: true },
     ],
     exampleSentences: [
       { japanese: "りんごを三つ食べました。", reading: "りんごをみっつたべました。", english: "I ate three apples." },
