@@ -46,6 +46,9 @@ async function ensureIndexes(database) {
     database.collection("studyProgress").createIndex({ clientId: 1, studyType: 1, itemId: 1 }, { unique: true }),
     database.collection("readings").createIndex({ id: 1 }, { unique: true }),
     database.collection("readings").createIndex({ level: 1, sortOrder: 1 }),
+    database.collection("counters").createIndex({ id: 1 }, { unique: true }),
+    database.collection("counters").createIndex({ level: 1 }),
+    database.collection("counters").createIndex({ category: 1 }),
     database.collection("userReadings").createIndex({ userReadingId: 1 }, { unique: true }),
     database.collection("userReadings").createIndex({ userId: 1, createdAt: -1 }),
     database.collection("userReadings").createIndex({ userId: 1, level: 1, createdAt: -1 }),
@@ -105,6 +108,14 @@ async function ensureSeedData(database) {
         await database.collection("readings").insertMany(seedData.readings, { ordered: true });
       }
     }
+    // Seed counters if the collection is empty (new feature on existing DB)
+    const countersCount = await database.collection("counters").countDocuments({}, { limit: 1 });
+    if (countersCount === 0) {
+      const seedData = buildSeedData();
+      if (seedData.counters.length) {
+        await database.collection("counters").insertMany(seedData.counters, { ordered: true });
+      }
+    }
     // Re-seed kanaItems if they still use old Nihon-shiki romaji (di/du instead of ji/zu)
     const oldKanaSample = await database.collection("kanaItems").findOne({ romaji: "di" });
     if (oldKanaSample) {
@@ -137,6 +148,7 @@ async function ensureSeedData(database) {
     ["vocabularyItems", seedData.vocabularyItems],
     ["grammarPatterns", seedData.grammarPatterns],
     ["readings", seedData.readings],
+    ["counters", seedData.counters],   // add this line
   ];
 
   for (const [collectionName, documents] of collections) {

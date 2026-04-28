@@ -195,6 +195,24 @@ function buildReadings(readings) {
   }));
 }
 
+function buildCounters(counters) {
+  return counters.map((c) => ({
+    id: c.id,
+    counter: c.counter,
+    readings: c.readings,
+    romaji: c.romaji,
+    meaning: c.meaning,
+    category: c.category,
+    appliesTo: c.appliesTo,
+    appliesToJa: c.appliesToJa,
+    conjugations: c.conjugations,
+    exampleSentences: c.exampleSentences,
+    notes: c.notes ?? null,
+    level: c.level,
+    sortOrder: c.sortOrder,
+  }));
+}
+
 export function buildSeedData() {
   const kanjiData = extractKanjiSourceData();
   const studySourceData = extractStudySourceData();
@@ -208,5 +226,6 @@ export function buildSeedData() {
     vocabularyItems: buildVocabularyItems(studySourceData.vocabulary),
     grammarPatterns: buildGrammarPatterns(studySourceData.grammar),
     readings: buildReadings(studySourceData.readings ?? []),
+    counters: buildCounters(studySourceData.counters ?? []),
   };
 }
