@@ -2,15 +2,21 @@ import { useState } from "react";
 
 const CATEGORIES = ["all", "objects", "animate", "time", "order", "generic"];
 
-function CounterCard({ item, expanded, onToggle, onSelect }) {
+function CounterCard({ item, expanded, onToggle, onSelect, isLearned }) {
   return (
-    <div className="counter-card" onClick={() => onSelect(item)} style={{ cursor: "pointer" }}>
+    <div
+      className={`counter-card${isLearned ? " counter-card-learned" : ""}`}
+      onClick={() => onSelect(item)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && onSelect(item)}
+    >
       <div className="counter-card-header">
         <span className="counter-char">{item.counter}</span>
         <div className="counter-header-right">
           <div className="counter-readings">
-            {item.readings.map((r, i) => (
-              <span key={i} className="counter-reading-badge">{r}</span>
+            {item.readings.map((r) => (
+              <span key={r} className="counter-reading-badge">{r}</span>
             ))}
           </div>
           <span className={`counter-category-badge counter-category-${item.category}`}>
@@ -23,7 +29,7 @@ function CounterCard({ item, expanded, onToggle, onSelect }) {
 
       <div className="counter-applies-to">
         {item.appliesToJa.map((ja, i) => (
-          <span key={i} className="counter-applies-chip">
+          <span key={ja} className="counter-applies-chip">
             <span className="applies-ja">{ja}</span>
             {item.appliesTo[i] && <span className="applies-en">{item.appliesTo[i]}</span>}
           </span>
@@ -41,8 +47,8 @@ function CounterCard({ item, expanded, onToggle, onSelect }) {
             </tr>
           </thead>
           <tbody>
-            {item.conjugations.map((conj, i) => (
-              <tr key={i} className={conj.irregular ? "conj-irregular" : ""}>
+            {item.conjugations.map((conj) => (
+              <tr key={conj.kanji} className={conj.irregular ? "conj-irregular" : ""}>
                 <td className="conj-num">{conj.number === null ? "?" : conj.number}</td>
                 <td className="conj-kanji">{conj.kanji}</td>
                 <td className={`conj-reading ${conj.irregular ? "conj-reading-irregular" : ""}`}>
@@ -67,8 +73,8 @@ function CounterCard({ item, expanded, onToggle, onSelect }) {
 
       {expanded && (
         <div className="counter-example-sentences">
-          {item.exampleSentences.map((s, i) => (
-            <div key={i} className="counter-sentence">
+          {item.exampleSentences.map((s) => (
+            <div key={s.japanese} className="counter-sentence">
               <p className="sentence-ja">{s.japanese}</p>
               <p className="sentence-reading">{s.reading}</p>
               <p className="sentence-en">{s.english}</p>
@@ -80,7 +86,7 @@ function CounterCard({ item, expanded, onToggle, onSelect }) {
   );
 }
 
-export default function CountersView({ items, search, onSelect }) {
+export default function CountersView({ items, search, onSelect, learnedSet }) {
   const [activeCategory, setActiveCategory] = useState("all");
   const [expandedIds, setExpandedIds] = useState(new Set());
 
@@ -100,6 +106,12 @@ export default function CountersView({ items, search, onSelect }) {
     });
   }
 
+  function emptyMessage() {
+    if (search && activeCategory !== "all") return `No "${activeCategory}" counters match "${search}".`;
+    if (search) return `No counters match "${search}".`;
+    return "No counters in this category.";
+  }
+
   return (
     <div className="counters-view">
       <div className="counters-category-filter">
@@ -115,9 +127,7 @@ export default function CountersView({ items, search, onSelect }) {
       </div>
 
       {filtered.length === 0 && (
-        <p className="counters-empty">
-          {search ? `No counters match "${search}"` : "No counters in this category."}
-        </p>
+        <p className="counters-empty">{emptyMessage()}</p>
       )}
 
       <div className="counters-grid">
@@ -128,6 +138,7 @@ export default function CountersView({ items, search, onSelect }) {
             expanded={expandedIds.has(item.id)}
             onToggle={() => toggleSentences(item.id)}
             onSelect={onSelect}
+            isLearned={learnedSet ? learnedSet.has(item.id) : false}
           />
         ))}
       </div>

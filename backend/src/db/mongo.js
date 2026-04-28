@@ -148,7 +148,7 @@ async function ensureSeedData(database) {
     ["vocabularyItems", seedData.vocabularyItems],
     ["grammarPatterns", seedData.grammarPatterns],
     ["readings", seedData.readings],
-    ["counters", seedData.counters],   // add this line
+    ["counters", seedData.counters],
   ];
 
   for (const [collectionName, documents] of collections) {

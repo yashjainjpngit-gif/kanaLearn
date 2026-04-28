@@ -4936,6 +4936,16 @@ input {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.counter-card:hover,
+.counter-card:focus-visible {
+  border-color: var(--accent, #5c6bc0);
+  outline: none;
+}
+.counter-card-learned {
+  border-color: var(--learned-text);
 }
 
 .counter-card-header {

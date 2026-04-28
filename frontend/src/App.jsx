@@ -310,12 +310,9 @@ export default function App() {
     }
 
     if (activeTab === "counters") {
-      if (practiceSourceMode === "learned") {
-        return filteredModuleItems.filter((item) => learnedSet.has(item.id));
-      }
-      if (practiceSourceMode === "unlearned") {
-        return filteredModuleItems.filter((item) => !learnedSet.has(item.id));
-      }
+      if (practiceSourceMode === "mistakes") return filteredModuleItems.filter((item) => weakIds.has(item.id));
+      if (practiceSourceMode === "learned") return filteredModuleItems.filter((item) => learnedSet.has(item.id));
+      if (practiceSourceMode === "unlearned") return filteredModuleItems.filter((item) => !learnedSet.has(item.id));
       return filteredModuleItems;
     }
 

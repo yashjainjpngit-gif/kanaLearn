@@ -239,6 +239,7 @@ export default function StudyItemModal({ activeTab, item, isLearned, onClose, on
         ["Readings", Array.isArray(item.readings) ? item.readings.join(" / ") : item.readings],
         ["Category", item.category],
         ["Applies to", Array.isArray(item.appliesTo) ? item.appliesTo.join(", ") : item.appliesTo],
+        ["Level", item.level],
         ...(item.notes ? [["Notes", item.notes]] : []),
       ],
       example: Array.isArray(item.exampleSentences) && item.exampleSentences.length > 0

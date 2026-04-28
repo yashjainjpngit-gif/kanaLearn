@@ -119,6 +119,7 @@ export default function useStudyData({
         katakana: getStoredLearnedIds("katakana").length,
         vocabulary: getStoredLearnedIds("vocabulary").length,
         grammar: getStoredLearnedIds("grammar").length,
+        counters: getStoredLearnedIds("counters").length,
       };
 
       const buildKanaSection = (label, key, items, learnedIds) => ({
