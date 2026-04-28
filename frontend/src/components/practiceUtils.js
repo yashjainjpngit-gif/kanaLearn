@@ -122,6 +122,23 @@ export function getPracticeModes(activeTab) {
       ],
       quizModes: [{ value: "multiple_choice", label: "Multiple Choice" }],
     },
+    counters: {
+      flashcardModes: [
+        { value: "counter_to_meaning", label: "Counter → Meaning" },
+        { value: "counter_to_reading", label: "Counter → Reading" },
+        { value: "meaning_to_counter", label: "Meaning → Counter" },
+      ],
+      promptModes: [
+        { value: "counter", label: "Counter" },
+        { value: "meaning", label: "Meaning" },
+      ],
+      answerModes: [
+        { value: "counter", label: "Counter" },
+        { value: "meaning", label: "Meaning" },
+        { value: "reading", label: "Reading" },
+      ],
+      quizModes: [{ value: "multiple_choice", label: "Multiple Choice" }],
+    },
   };
 
   return config[activeTab] ?? {
@@ -152,6 +169,11 @@ export function getPracticeValue(item, activeTab, mode) {
       reading: item.reading,
       meaning: item.meaning,
     },
+    counters: {
+      counter: item.counter,
+      meaning: item.meaning,
+      reading: Array.isArray(item.readings) ? item.readings.join(" / ") : "",
+    },
   };
 
   return valueMap[activeTab]?.[mode] ?? "";
@@ -174,6 +196,7 @@ export function getPracticeItemLabel(item, activeTab) {
     katakana: item.character_symbol,
     kanji: item.character,
     vocabulary: item.word,
+    counters: item.counter,
   };
 
   return labelMap[activeTab] ?? String(item.id);

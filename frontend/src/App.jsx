@@ -309,6 +309,16 @@ export default function App() {
       return filteredItems;
     }
 
+    if (activeTab === "counters") {
+      if (practiceSourceMode === "learned") {
+        return filteredModuleItems.filter((item) => learnedSet.has(item.id));
+      }
+      if (practiceSourceMode === "unlearned") {
+        return filteredModuleItems.filter((item) => !learnedSet.has(item.id));
+      }
+      return filteredModuleItems;
+    }
+
     return [];
   }, [activeTab, filteredModuleItems, kanji, learnedSet, practiceGroups, practiceSourceMode, weakItemsQuery.data]);
 
