@@ -4961,10 +4961,6 @@ input {
   cursor: pointer;
   transition: border-color 0.15s;
   min-width: 0;
-  max-height: min(78vh, 760px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
 }
 .counter-card:hover,
 .counter-card:focus-visible {
