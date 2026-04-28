@@ -2,9 +2,9 @@ import { useState } from "react";
 
 const CATEGORIES = ["all", "objects", "animate", "time", "order", "generic"];
 
-function CounterCard({ item, expanded, onToggle }) {
+function CounterCard({ item, expanded, onToggle, onSelect }) {
   return (
-    <div className="counter-card">
+    <div className="counter-card" onClick={() => onSelect(item)} style={{ cursor: "pointer" }}>
       <div className="counter-card-header">
         <span className="counter-char">{item.counter}</span>
         <div className="counter-header-right">
@@ -59,7 +59,7 @@ function CounterCard({ item, expanded, onToggle }) {
         <p className="counter-notes">{item.notes}</p>
       )}
 
-      <button className="counter-sentences-toggle" onClick={onToggle}>
+      <button className="counter-sentences-toggle" onClick={(e) => { e.stopPropagation(); onToggle(); }}>
         {expanded
           ? "Hide examples"
           : `Show ${item.exampleSentences.length} example${item.exampleSentences.length !== 1 ? "s" : ""}`}
@@ -80,7 +80,7 @@ function CounterCard({ item, expanded, onToggle }) {
   );
 }
 
-export default function CountersView({ items, search }) {
+export default function CountersView({ items, search, onSelect }) {
   const [activeCategory, setActiveCategory] = useState("all");
   const [expandedIds, setExpandedIds] = useState(new Set());
 
@@ -127,6 +127,7 @@ export default function CountersView({ items, search }) {
             item={item}
             expanded={expandedIds.has(item.id)}
             onToggle={() => toggleSentences(item.id)}
+            onSelect={onSelect}
           />
         ))}
       </div>

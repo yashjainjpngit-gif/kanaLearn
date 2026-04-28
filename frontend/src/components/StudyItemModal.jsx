@@ -232,6 +232,19 @@ export default function StudyItemModal({ activeTab, item, isLearned, onClose, on
         ? { japanese: item.example_japanese, reading: item.example_reading, meaning: item.example_meaning }
         : null,
     },
+    counters: {
+      title: item.counter,
+      subtitle: item.meaning,
+      details: [
+        ["Readings", Array.isArray(item.readings) ? item.readings.join(" / ") : item.readings],
+        ["Category", item.category],
+        ["Applies to", Array.isArray(item.appliesTo) ? item.appliesTo.join(", ") : item.appliesTo],
+        ...(item.notes ? [["Notes", item.notes]] : []),
+      ],
+      example: Array.isArray(item.exampleSentences) && item.exampleSentences.length > 0
+        ? { japanese: item.exampleSentences[0].japanese, reading: item.exampleSentences[0].reading, meaning: item.exampleSentences[0].english }
+        : null,
+    },
   };
 
   const content = contentMap[activeTab];

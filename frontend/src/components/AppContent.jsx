@@ -142,7 +142,7 @@ export default function AppContent({
   }
 
   if (activeTab === "counters") {
-    return <CountersView items={visibleItems} search={search} />;
+    return <CountersView items={visibleItems} search={search} onSelect={setSelectedItem} />;
   }
 
   if (activeTab === "grammar") {
