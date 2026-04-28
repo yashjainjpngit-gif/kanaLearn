@@ -4939,9 +4939,8 @@ input {
 
 .counters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
   gap: 20px;
-  align-items: start;
 }
 
 @media (max-width: 600px) {
@@ -4960,7 +4959,6 @@ input {
   gap: 12px;
   cursor: pointer;
   transition: border-color 0.15s;
-  min-width: 0;
 }
 .counter-card:hover,
 .counter-card:focus-visible {
