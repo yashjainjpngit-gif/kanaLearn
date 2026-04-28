@@ -34,7 +34,7 @@ const VOCAB_KANA_GROUPS = {
 router.get("/counts", createResponseCache(10 * 60 * 1000), async (_req, res, next) => {
   try {
     const database = await getDatabase();
-    const [kanji, radicals, hiragana, katakana, vocabulary, grammar, readings] = await Promise.all([
+    const [kanji, radicals, hiragana, katakana, vocabulary, grammar, readings, counters] = await Promise.all([
       database.collection("kanjiItems").countDocuments(),
       database.collection("radicals").countDocuments(),
       database.collection("kanaItems").countDocuments({ script: "hiragana" }),
@@ -42,9 +42,10 @@ router.get("/counts", createResponseCache(10 * 60 * 1000), async (_req, res, nex
       database.collection("vocabularyItems").countDocuments(),
       database.collection("grammarPatterns").countDocuments(),
       database.collection("readings").countDocuments(),
+      database.collection("counters").countDocuments(),
     ]);
 
-    res.json({ radicals, hiragana, katakana, kanji, vocabulary, grammar, readings });
+    res.json({ radicals, hiragana, katakana, kanji, vocabulary, grammar, readings, counters });
   } catch (error) {
     next(error);
   }
@@ -342,6 +343,55 @@ router.get("/grammar", createResponseCache(10 * 60 * 1000), async (req, res, nex
         lesson: row.lesson ?? null,
         chapter_title: row.chapterTitle ?? null,
         notes: row.notes ?? null,
+      }))
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/counters", createResponseCache(10 * 60 * 1000), async (req, res, next) => {
+  try {
+    const database = await getDatabase();
+    const { search = "", level = "", category = "" } = req.query;
+    const query = {};
+
+    if (search.trim()) {
+      const regex = buildRegex(search);
+      query.$or = [
+        { counter: regex },
+        { readings: regex },
+        { meaning: regex },
+        { appliesTo: regex },
+        { appliesToJa: regex },
+      ];
+    }
+
+    if (level.trim()) {
+      query.level = level.trim();
+    }
+
+    if (category.trim()) {
+      query.category = category.trim();
+    }
+
+    const rows = await database.collection("counters").find(query).sort({ sortOrder: 1, id: 1 }).toArray();
+
+    res.json(
+      rows.map((row) => ({
+        id: row.id,
+        counter: row.counter,
+        readings: row.readings,
+        romaji: row.romaji,
+        meaning: row.meaning,
+        category: row.category,
+        appliesTo: row.appliesTo,
+        appliesToJa: row.appliesToJa,
+        conjugations: row.conjugations,
+        exampleSentences: row.exampleSentences,
+        notes: row.notes ?? null,
+        level: row.level,
+        sortOrder: row.sortOrder,
       }))
     );
   } catch (error) {
