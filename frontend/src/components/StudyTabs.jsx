@@ -9,6 +9,7 @@ const TAB_CONFIG = [
   ["kanji", "Kanji", "/kanji"],
   ["vocabulary", "Vocabulary", "/vocabulary"],
   ["grammar", "Grammar", "/grammar"],
+  ["counters", "Counters", "/counters"],
   ["readings", "Readings", "/readings"],
   ["conjugator", "Conjugator", "/conjugator"],
 ];

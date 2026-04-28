@@ -35,6 +35,7 @@ const PAGE_TITLES = {
   katakana: "Katakana",
   vocabulary: "Vocabulary",
   grammar: "Grammar",
+  counters: "Counters",
   readings: "Readings",
   conjugator: "Conjugator",
   addReading: "Add Reading",
@@ -52,6 +53,7 @@ function getActiveTabFromPathname(pathname) {
   if (pathname === "/readings") return "readings";
   if (pathname === "/readings/add") return "readings";
   if (pathname === "/conjugator") return "conjugator";
+  if (pathname === "/counters") return "counters";
   return null;
 }
 
@@ -155,7 +157,7 @@ export default function App() {
   });
 
   const learnedSet = useMemo(() => new Set(learnedIds), [learnedIds]);
-  const isPracticeTab = ["hiragana", "katakana", "kanji", "vocabulary"].includes(activeTab);
+  const isPracticeTab = ["hiragana", "katakana", "kanji", "vocabulary", "counters"].includes(activeTab);
 
   const kanaRowOptions = useMemo(() => {
     if (activeTab !== "hiragana" && activeTab !== "katakana") {
